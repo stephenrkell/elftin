@@ -1,0 +1,17 @@
+syntax: glob
+custom-phdrs/hello.with-heap-phdr
+custom-phdrs/test/heap-segment/hello
+custom-phdrs/test/heap-segment/hello.lds
+*.o
+*.map
+custom-phdrs/test/heap-segment/hello.with-heap-phdr
+custom-phdrs/test/heap-segment/hello.with-heap-phdr.lds
+embed-loadable/shift-elf
+embed-loadable/test/meta-obj/libfoo-shifted.so
+embed-loadable/test/meta-obj/libfoo.so
+embed-loadable/test/meta-obj/test-load
+embed-loadable/test/meta-obj/test-load.lds
+embed-loadable/test/meta-obj/test-load.with-meta-phdr
+embed-loadable/test/meta-obj/test-load.with-meta-phdr.lds
+embed-loadable/test/meta-obj/test-load.with-phdrs.lds
+

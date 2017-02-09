@@ -1,0 +1,12 @@
+--- default.lds	2016-08-04 12:11:23.000000000 +0100
++++ heap.lds	2016-08-08 13:15:48.000000000 +0100
+@@ -178,6 +178,9 @@
+   . = ALIGN(64 / 8);
+   _end = .; PROVIDE (end = .);
+   . = DATA_SEGMENT_END (.);
++  /* srk: new segment! */
++  . = ALIGN(CONSTANT (COMMONPAGESIZE));
++  .meta : { *(SORT_BY_NAME(.meta*)) } :meta
+   /* Stabs debugging sections.  */
+   .stab          0 : { *(.stab) }
+   .stabstr       0 : { *(.stabstr) }
