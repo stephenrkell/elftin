@@ -13,7 +13,7 @@ SHIFT_ELF ?= $(ELFTIN)/embed-loadable/shift-elf
 $(ELFTIN)/embed-loadable/shift-elf:
 	$(MAKE) -C $(dir $@) shift-elf
 
-$(warning "You will need a special/hacked ld.so for the embedded file to be loadable.")
+$(warning "You will need a special/hacked ld.so for the embedded file to be loadable, until I rewrite ldso-helper.c to reflect on the ld.so structures correctly. Ask me (srk31@cl.cam.ac.uk).")
 
 %-shifted.so: %.so $(OBJ_NAME) $(SHIFT_ELF)
 	offset=$$( printf "%d" "$$( $(ELFTIN)/custom-phdrs/predict-meta-offset.sh $(OBJ_NAME) )" ); \

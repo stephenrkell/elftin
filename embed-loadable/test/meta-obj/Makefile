@@ -11,6 +11,10 @@ default: test-load.with-$(PHDR_NAME)-phdr
 OBJ_NAME := test-load
 include $(dir $(THIS_MAKEFILE))/../../../embed-loadable/rules.mk
 
+ifeq ($(LIBALLOCS),)
+$(warning Please grab the liballocs build tree and then set LIBALLOCS)
+endif
+
 CFLAGS += -I$(LIBALLOCS)/include
 CFLAGS += -std=c11
 CFLAGS += -g
