@@ -14,8 +14,8 @@ PHDR_NAME := heap
 hello: hello.o malloc.o pool.o
 
 hello.with-heap-phdr: hello.o malloc.o pool.o hello.with-$(PHDR_NAME)-phdr.lds
-	$(CC) -o "$@" $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $(LDLIBS) $(filter-out %.lds,$+) \
-	  -Wl,-T,$(filter %.lds,$+)
+	$(CC) -o "$@" $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $(LDLIBS) $(filter-out %.lds,$(sort $+)) \
+	  -Wl,-T,$(filter %.lds,$(sort $+))
 
 include $(ELFTIN)/custom-phdrs/rules.mk
 
