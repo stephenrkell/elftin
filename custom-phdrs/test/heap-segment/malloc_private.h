@@ -6,7 +6,7 @@ struct free_chunk
 }; 
 
 #ifndef POOL_SIZE
-#define POOL_SIZE (1 * 1024)
+#define POOL_SIZE (1024 * 1024)
 #endif
 
 #ifndef PAGE_SIZE
