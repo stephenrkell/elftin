@@ -56,5 +56,5 @@ $(OBJ_NAME).with-$(PHDR_NAME)-phdr: $(OBJ_NAME).with-$(PHDR_NAME)-phdr.lds
 
 
 clean::
-	rm -f *.o *.lds *.lds.phdrify.m4
+	rm -f *.o *.lds *.lds.phdrify.m4 $(OBJ_NAME)
 	rm -f *.phdrs.inc
