@@ -1,0 +1,25 @@
+This is elftin, a possibly-growing selection of tasty scripts which do 
+wonderful and strange things with ELF binaries.
+
+It's not really documented, but you could read my blog post.
+<https://www.cs.kent.ac.uk/people/staff/srk21/blog/2017/02/14#custom-elf-phdrs>
+
+Currently there are three scripts in the tin.
+
+- custom-phdrs: lets you relink a binary to include a custom ELF program 
+header, with whatever content you like
+
+- embed-file: extends custom-phdrs so that the added program header is 
+accompanied by a binary blob that is inserted into the file, with the 
+program header marking its extent
+
+- embed-loadable: extends embed-file to allow for the embedded binary 
+blob to be itself an ELF file -- whose offset fields have been fixed up 
+(by a utility program, included) such that they are relative to the 
+loaded file. This allows the embedded file to be loaded from a file 
+descriptor ponting at the beginning of the blob (its ELF header) within 
+the larger file, even though it is not necessarily at the beginning of 
+that file. This only works if you have a ld.so or libdl that exposes a 
+"dlopen from file descriptor". Glibc's ld.so doesn't do that; ask me 
+<srk31@srcf.ucam.org> how to make a hacked version that does. I believe 
+FreeBSD's (and others') do expose this.
