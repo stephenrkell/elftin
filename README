@@ -1,10 +1,10 @@
-This is elftin, a possibly-growing selection of tasty scripts which do 
+This is elftin, a possibly-growing selection of scripts/tools which do 
 wonderful and strange things with ELF binaries.
 
 It's not really documented, but you could read my blog post.
-<https://www.cs.kent.ac.uk/people/staff/srk21/blog/2017/02/14#custom-elf-phdrs>
+<https://humprog.org/~stephen/blog/2017/02/14#custom-elf-phdrs>
 
-Currently there are three scripts in the tin.
+Currently there are the following scripts/tools:
 
 - custom-phdrs: lets you relink a binary to include a custom ELF program 
 header, with whatever content you like
@@ -23,3 +23,14 @@ that file. This only works if you have a ld.so or libdl that exposes a
 "dlopen from file descriptor". Glibc's ld.so doesn't do that; ask me 
 <srk31@srcf.ucam.org> how to make a hacked version that does. I believe 
 FreeBSD's (and others') do expose this.
+
+- normrelocs: update an ELF file, in place, to prefer non-section 
+symbols in any relocations that reference the symbol 'externally' (e.g. 
+to call it) rather than internally (e.g. to reference a point within its 
+code, e.g. from debugging information). This is sometimes useful after 
+globalizing a symbol using objcopy, since the assembler may have chosen 
+section-relative relocs against local symbols.
+
+- abs2und: update an ELF file, in place, turning ABS symbols into UND 
+symbols. This is part of a bigger recipe for symbol wrapping which I 
+haven't published or documented properly yet.
