@@ -113,16 +113,17 @@ int main(int argc, char **argv)
 		return 5;
 	}
 #define INITIAL_LIST_SIZE 256
-	unsigned zero_offset_list_size = INITIAL_LIST_SIZE;
+	unsigned zero_offset_list_size = 0;
 	struct remembered_symbol *zero_offset_list = NULL;
 	unsigned nzero_offset = 0;
-	unsigned section_sym_list_size = INITIAL_LIST_SIZE;
+	unsigned section_sym_list_size = 0;
 	struct remembered_symbol *section_sym_list = NULL;
 	unsigned nsection_sym = 0;
 #define REALLOC_IF_FULL(fragment) do { \
 	if (n ## fragment + 1 > fragment ## _list_size) \
 	{ \
-		fragment ## _list_size *= 2; \
+		fragment ## _list_size = (fragment ## _list_size) ? fragment ## _list_size * 2 : \
+		     INITIAL_LIST_SIZE * sizeof (struct remembered_symbol); \
 		fragment ## _list = realloc(fragment ## _list, fragment ## _list_size); \
 		if (! fragment ## _list) err(1, "reallocating remembered list"); \
 	} } while (0)
@@ -215,9 +216,11 @@ int main(int argc, char **argv)
 			// where that section has a corresponding zero-offset symbol, and
 			// the relocation site matches our criteria, and
 			// the zero-offset symbol matches our criteria?
+			const unsigned sz = ((shdr->sh_type == SHT_REL) ?
+					sizeof (Elf64_Rel) : sizeof (Elf64_Rela));
 			for (unsigned char *rel = rels;
 					rel != rels + shdr->sh_size;
-					rel += (shdr->sh_type == SHT_REL) ? sizeof (Elf64_Rel) : sizeof (Elf64_Rela))
+					rel += sz)
 			{
 				/* Rel is a prefix of Rela, so just copy out the fields we want. */
 				Elf64_Addr r_offset;
@@ -243,7 +246,9 @@ int main(int argc, char **argv)
 					if (found)
 					{
 						// do the rewrite
-						Elf64_Xword new_r_info = ELF64_R_INFO(found->sym - symtab,
+						warnx("Rewriting a reloc (shdr %u offset %u) to point to zero-offset sym %s",
+							shdr - shdrs, (rel - rels) / sz, found->associated->name);
+						Elf64_Xword new_r_info = ELF64_R_INFO(found->associated->sym - symtab,
 							ELF64_R_TYPE(r_info));
 						memcpy(rel + offsetof(Elf64_Rel, r_info),
 							&new_r_info,
@@ -258,4 +263,5 @@ int main(int argc, char **argv)
 	if (section_sym_list) free(section_sym_list);
 	munmap(mapping, length);
 	close(fd);
+	return 0;
 }
