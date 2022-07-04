@@ -14,6 +14,7 @@
 #include <assert.h>
 #include <alloca.h>
 #include <link.h> /* for ElfW */
+#include "/home/stephen/work/devel/libdlbind.git/src/symhash.h" /* for GNU hash table building */
 
 /* Here we rewrite an ELF file to resolve inconsistencies between
  * the .symtab and the .dynsym, in the .symtab's favour.
@@ -30,12 +31,33 @@
  * have a way to introduce new strings into dynstr, so this is rather limited.
  *
  * Let's use hsearch for our hash tables.
+ *
+ * This gets complicated because dynamic linking machinery (GOT and PLT entries,
+ * symbol hash tables) may need to be regenerated. We know how to regenerate the
+ * SysV hash table. We do not rename PLT entries, but probably we should.
+ *
+ * In the future, we want tools like this to be implemented via 'files as heaps'.
+ * Handling the non-trivial redundancy between hash tables and the base data
+ * will be a challenge, e.g. to capture in the editable asm output.
  */
 
 static void usage(const char *basename)
 {
 	fprintf(stderr, "Usage: %s <filename>\n", basename);
 }
+char *strtab_find(const char *haystack, const char *haystack_end, const char *needle)
+{
+	const char *found;
+	do {
+		size_t n = strnlen(haystack, haystack_end - haystack);
+		found = strstr(haystack, needle);
+		if (found) return (char*) found;
+		haystack = haystack + n + 1;
+	} while (haystack < haystack_end);
+	return NULL;
+}
+
+_Bool must_recompute_hash_tables;
 int main(int argc, char **argv)
 {
 	if (argc != 2)
@@ -150,13 +172,34 @@ int main(int argc, char **argv)
 			}
 		}
 	}
+	Elf64_Sym *dynsym_start = NULL;
+	char *dynstr = NULL;
+	char *dynstr_end = NULL;
+	ElfW(Word) *sysv_hash = NULL;
+	unsigned sysv_hash_sz;
+	ElfW(Word) *gnu_hash = NULL;
+	unsigned gnu_hash_sz;
 	/* Now we're looking for a dynsym. */
 	for (Elf64_Shdr *shdr = shdrs; shdr < shdrs + ehdr->e_shnum; ++shdr)
 	{
+		if (shdr->sh_type == SHT_GNU_HASH)
+		{
+			gnu_hash = SECTION_DATA(*shdr);
+			gnu_hash_sz = shdr->sh_size;
+			continue;
+		}
+		if (shdr->sh_type == SHT_HASH)
+		{
+			sysv_hash = SECTION_DATA(*shdr);
+			sysv_hash_sz = shdr->sh_size;
+			continue;
+		}
 		if (shdr->sh_type == SHT_DYNSYM)
 		{
-			char *dynstr = SECTION_DATA(shdrs[shdr->sh_link]);
-			for (Elf64_Sym *dynsym = SECTION_DATA(*shdr);
+			dynstr = SECTION_DATA(shdrs[shdr->sh_link]);
+			dynstr_end = dynstr + shdrs[shdr->sh_link].sh_size;
+			ElfW(Sym) *dynsym;
+			for (dynsym = dynsym_start = SECTION_DATA(*shdr);
 					dynsym != (Elf64_Sym *) ((char*) SECTION_DATA(*shdr) + shdr->sh_size);
 					++dynsym)
 			{
@@ -226,7 +269,7 @@ int main(int argc, char **argv)
 						/* symtab has a unique and different name for this address.
 						 * Rename the symbol to that name. PROBLEM: what if it's not
 						 * in dynstr? */
-						char *found = strstr(dynstr, found_name);
+						char *found = strtab_find(dynstr, dynstr_end, found_name);
 						if (!found)
 						{
 							fprintf(stderr, "Can't rename `%s' to `%s' because the latter"
@@ -234,16 +277,26 @@ int main(int argc, char **argv)
 						}
 						else
 						{
-							fprintf(stderr, "Renaming `%s' to `%s'\n");
+							fprintf(stderr, "Renaming `%s' to `%s'\n", namestr, found);
 							dynsym->st_name = found - &dynstr[0];
+							must_recompute_hash_tables = 1;
 						}
 					}
 				} /* end if name */
 			} /* end for sym */
 		} /* end if dynsym */
 	} /* end for shdr */
-	/* What about the address data? */
-
+	if (must_recompute_hash_tables)
+	{
+		if (gnu_hash) errx(99, "Unimplemented: rewriting GNU hash table");
+		ElfW(Word) nbucket = sysv_hash[0];
+		ElfW(Word) nchain = sysv_hash[1];
+		ElfW(Word) (*buckets)[/*nbucket*/] = (ElfW(Word)(*)[]) &sysv_hash[2];
+		ElfW(Word) (*chains)[/*nchain*/] = (ElfW(Word)(*)[]) &sysv_hash[2 + nbucket];
+		bzero(sysv_hash, sysv_hash_sz);
+		unsigned nsyms = nchain;
+		elf64_hash_init((char*) sysv_hash, sysv_hash_sz, nbucket, nsyms, dynsym_start, dynstr);
+	}
 	hdestroy_r(&syms_by_name);
 	hdestroy_r(&sym_blacklist);
 	hdestroy_r(&syms_by_addr);

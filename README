@@ -34,3 +34,10 @@ section-relative relocs against local symbols.
 - abs2und: update an ELF file, in place, turning ABS symbols into UND 
 symbols. This is part of a bigger recipe for symbol wrapping which I 
 haven't published or documented properly yet.
+
+- sym2dyn: following use of 'objcopy' that updates the (static) symbol
+table, propagate changes to the dynamic symbol table. This requires
+librunt headers at build time. Currently it is very limited, e.g. cannot
+add new strings to dynstr (so renames must use a subsequence of an
+existing symbol name), cannot regenerate GNU symbol hash table (so input
+binaries must use only the SysV table).
