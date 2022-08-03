@@ -12,6 +12,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <err.h>
+#include <assert.h>
 
 /*
  Here we rewrite an ELF file so that for any relocation record,
@@ -68,7 +69,7 @@ int compare_remembered_sym_by_addr(const void *s1, const void *s2)
 }
 int main(int argc, char **argv)
 {
-	if (argc < 2) // second arg is optionl
+	if (argc < 2) // second arg is optional
 	{
 		usage(basename(argv[0]));
 		return 1;
@@ -188,7 +189,8 @@ int main(int argc, char **argv)
 							else
 							{
 								warnx("Fishy: found multiple zero-offset replacements "
-									"for section symbol %s", name);
+									"for section symbol of section `%s'",
+									&shstrtab[shdrs[section_sym_list[i].sym->st_shndx].sh_name]);
 							}
 						}
 					}
@@ -196,21 +198,23 @@ int main(int argc, char **argv)
 			}
 		}
 	}
-	/* qsort section_sym_list. It has no incoming pointers.
+	/* qsort section_sym_list by literally the mmap'd addr of the Elf64_Sym.
+	 * It has no incoming pointers.
 	 * (NEVER sort zero_offset_list! It does have incoming pointers.) */
 	qsort(section_sym_list, nsection_sym, sizeof (struct remembered_symbol),
 		compare_remembered_sym_by_addr);
-	/* Now we look for relocs. */
+	/* Now we look for relocs referring to section syms from non-debug sections
+	 * *or* to named ordinary syms from debug sections. Both need to be rewritten. */
 	for (Elf64_Shdr *shdr = shdrs; shdr < shdrs + ehdr->e_shnum; ++shdr)
 	{
 		if (shdr->sh_type == SHT_REL || shdr->sh_type == SHT_RELA)
 		{
 			unsigned char *rels = SECTION_DATA(*shdr);
 			// NOTE: this may be Rel or Rela and we cast on use
-			Elf64_Sym *symtab = SECTION_DATA(shdrs[shdr->sh_link]);
+			Elf64_Shdr *symtab_shdr = &shdrs[shdr->sh_link];
+			Elf64_Sym *symtab = SECTION_DATA(*symtab_shdr);
+			char *strtab = SECTION_DATA(shdrs[symtab_shdr->sh_link]);
 			Elf64_Shdr *relocated_sect_shdr = &shdrs[shdr->sh_info];
-			// is this a section we should be messing with?
-			if (IS_A_DEBUGGING_SECTION(relocated_sect_shdr)) continue;
 			void *relocated_sect_data = SECTION_DATA(*relocated_sect_shdr);
 			// does this reloc reference a section symbol,
 			// where that section has a corresponding zero-offset symbol, and
@@ -228,7 +232,52 @@ int main(int argc, char **argv)
 				Elf64_Xword r_info;
 				memcpy(&r_info, rel + offsetof(Elf64_Rel, r_info), sizeof r_info);
 				Elf64_Sym *sym = symtab + ELF64_R_SYM(r_info);
-				if (ELF64_ST_TYPE(sym->st_info) == STT_SECTION)
+				/* If the reference is coming from a debugging section, 
+				 * we look for zero-offset-symbol relocs and turn them to section relocs.
+				 */
+				if (IS_A_DEBUGGING_SECTION(relocated_sect_shdr) &&
+					(ELF64_ST_TYPE(sym->st_info) == STT_NOTYPE ||
+						ELF64_ST_TYPE(sym->st_info) == STT_OBJECT ||
+						ELF64_ST_TYPE(sym->st_info) == STT_FUNC ||
+						ELF64_ST_TYPE(sym->st_info) == STT_COMMON) &&
+						sym->st_value == 0)
+					// FIXME: we don't require value==0! can use addends
+				{
+					warnx("found a from-debug reloc using ordinary symbol `%s'",
+							&strtab[sym->st_name]);
+					/* The reloc is using a zero-offset symbol, so let it
+					 * use the section symbol instead. Sadly we have to linear-search
+					 * for it. */
+					int done_rewrite = 0;
+					for (struct remembered_symbol *s = &section_sym_list[0];
+							s < &section_sym_list[nsection_sym];
+							++s)
+					{
+						if (s->sym->st_shndx == sym->st_shndx)
+						{
+							// s is a section symbol
+							if (s->associated && !(sym == s->associated->sym))
+							{
+								warnx("reloc uses zero-offset sym that is not the associated one");
+							}
+							// do the rewrite
+							Elf64_Xword new_r_info = ELF64_R_INFO(s->sym - symtab,
+								ELF64_R_TYPE(r_info));
+							memcpy(rel + offsetof(Elf64_Rel, r_info),
+								&new_r_info,
+								sizeof new_r_info);
+							done_rewrite = 1;
+							break;
+						}
+					}
+					if (!done_rewrite)
+					{
+						warnx("did not rewrite a from-debug reloc using ordinary symbol `%s'",
+							strtab[sym->st_name]);
+					}
+				}
+				else if (!IS_A_DEBUGGING_SECTION(relocated_sect_shdr) &&
+					ELF64_ST_TYPE(sym->st_info) == STT_SECTION)
 				{
 					// does this reloc site match our criteria?
 					// FIXME: here is where we catch goto labels etc
@@ -245,14 +294,29 @@ int main(int argc, char **argv)
 						compare_remembered_sym_by_addr);
 					if (found)
 					{
-						// do the rewrite
-						warnx("Rewriting a reloc (shdr %u offset %u) to point to zero-offset sym %s",
-							shdr - shdrs, (rel - rels) / sz, found->associated->name);
-						Elf64_Xword new_r_info = ELF64_R_INFO(found->associated->sym - symtab,
-							ELF64_R_TYPE(r_info));
-						memcpy(rel + offsetof(Elf64_Rel, r_info),
-							&new_r_info,
-							sizeof new_r_info);
+						/* We don't do rewrites for intra-section references via section symbols,
+						 * e.g. for addr-taking of goto labels etc. */
+						if (sym->st_shndx == relocated_sect_shdr - shdrs)
+						{
+							continue;
+						}
+						if (!found->associated)
+						{
+							warnx("NOT rewriting a reloc (shdr %u offset %u) to point to zero-offset sym: no sym found",
+							(unsigned)(shdr - shdrs), (unsigned)((rel - rels) / sz));
+						}
+						else
+						{
+							// do the rewrite
+							warnx("Rewriting a reloc (shdr %u offset %u) to point to zero-offset sym %s",
+								(unsigned)(shdr - shdrs), (unsigned)((rel - rels) / sz),
+									found->associated->name);
+							Elf64_Xword new_r_info = ELF64_R_INFO(found->associated->sym - symtab,
+								ELF64_R_TYPE(r_info));
+							memcpy(rel + offsetof(Elf64_Rel, r_info),
+								&new_r_info,
+								sizeof new_r_info);
+						}
 					}
 				}
 			}
