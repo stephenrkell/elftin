@@ -11,9 +11,9 @@ NORMRELOCS="${NORMRELOCS:-`dirname "$0"`/../normrelocs/normrelocs}"
 
 cat "$origname" > "$tmpname"
 for sym in $@; do
-    ${NORMRELOCS} "$tmpname" "$sym"
+    ${NORMRELOCS} "$tmpname" "$sym" || exit 1
 done
 newtmp=`mktemp --suffix=.o`
-ld -r `for sym in $@; do echo --defsym __real_$sym=$sym; done` -o "$newtmp" "$tmpname"
+ld -r `for sym in $@; do echo --defsym __real_$sym=$sym; done` -o "$newtmp" "$tmpname" && \
 mv "$newtmp" "$tmpname"
 

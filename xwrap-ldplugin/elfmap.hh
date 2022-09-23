@@ -10,13 +10,15 @@
 namespace elftin
 {
 
-struct elfmap
+struct fmap
 {
+	int fd;
 	void *mapping;
 	size_t mapping_size;
+	off_t mapping_offset;
+	off_t start_offset_from_mapping_offset;
 	int mapping_err;
-	ElfW(Ehdr) *hdr;
-	elfmap(int fd, size_t offset)
+	fmap(int fd, size_t offset)
 	{
 		struct stat statbuf;
 		int ret = fstat(fd, &statbuf);
@@ -24,46 +26,67 @@ struct elfmap
 #ifndef PAGE_SIZE
 #define PAGE_SIZE 4096
 #endif
-		// FIXME: 'offset' is not being accounted for here
-		this->mapping_size = ROUND_UP(statbuf.st_size, PAGE_SIZE);
+		this->fd = fd;
+		this->mapping_offset = offset & (PAGE_SIZE - 1);
+		this->start_offset_from_mapping_offset = offset - mapping_offset;
+		this->mapping_size = ROUND_UP(statbuf.st_size - mapping_offset, PAGE_SIZE);
 		this->mapping = mmap(NULL, mapping_size, PROT_READ, MAP_PRIVATE,
-			fd, offset);
+			fd, mapping_offset);
 		if (mapping == MAP_FAILED)
 		{
 			this->mapping = nullptr;
 			this->mapping_size = 0;
 			this->mapping_err = errno;
-			this->hdr = nullptr;
 		}
 		else
 		{
 			this->mapping_err = 0;
-			this->hdr = reinterpret_cast<ElfW(Ehdr) *>(this->mapping);
 		}
 	}
-	~elfmap()
+	virtual ~fmap()
 	{
 		if (mapping) munmap(mapping, mapping_size);
 	}
-	
+	off_t start_offset() const { return mapping_offset + start_offset_from_mapping_offset; }
 	operator bool() const { return mapping != NULL; }
-	operator void*() const { return mapping; }
-	operator ElfW(Ehdr)*() const { return reinterpret_cast<ElfW(Ehdr) *>(mapping); }
+	operator void*() const { return (unsigned char *) mapping + start_offset_from_mapping_offset; }
+	
+	template<typename Target>
+	Target *ptr(off_t o) const
+	{
+		return reinterpret_cast<Target*>((unsigned char *) mapping + start_offset_from_mapping_offset + o);
+	}
+	template<typename Target>
+	Target& ref(off_t o) const
+	{
+		return *reinterpret_cast<Target*>((unsigned char *) mapping + start_offset_from_mapping_offset + o);
+	}
+};
 
-	template<typename Target>
-	Target *ptr(ElfW(Off) o) const
+struct elfmap : public fmap
+{
+	ElfW(Ehdr) *hdr;
+private:
+	void set_hdr()
 	{
-		return reinterpret_cast<Target*>((unsigned char *) mapping + o);
+		if (this->mapping == MAP_FAILED) this->hdr = nullptr;
+		else
+		{
+			assert(0 == memcmp(this->ptr<void>(0), "\x7f""ELF", 4));
+			this->hdr = reinterpret_cast<ElfW(Ehdr) *>(this->operator void *());
+		}
 	}
-	template<typename Target>
-	Target& ref(ElfW(Off) o) const
-	{
-		return *reinterpret_cast<Target*>((unsigned char *) mapping + o);
-	}
+public:
+	elfmap(fmap&& to_upgrade) : fmap(std::move(to_upgrade))
+	{ set_hdr(); }
+	elfmap(int fd, size_t offset) : fmap(fd, offset)
+	{ set_hdr(); }
+
+	operator ElfW(Ehdr)*() const { return hdr; }
 
 	template <ElfW(Word) sht>
 	ElfW(Shdr)*
-	find(ElfW(Shdr) *start = nullptr) const /* find first a section header by SHT */
+	find(ElfW(Shdr) *start = nullptr) const /* find first section header by SHT */
 	{
 		ElfW(Shdr) *first = ptr<ElfW(Shdr)>(hdr->e_shoff);
 		if (!start) start = first;

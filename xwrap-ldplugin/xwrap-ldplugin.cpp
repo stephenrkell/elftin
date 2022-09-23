@@ -34,6 +34,8 @@
  */
 
 #include <vector>
+#include <set>
+#include <map>
 #include <string>
 #include <regex>
 #include <cstdint>
@@ -51,12 +53,14 @@
 #include <sys/stat.h> /* for fstat() */
 #include <unistd.h> /* for fstat(), write(), read() */
 #include <utility> /* for pair */
+#include <algorithm> /* for find_if and remove_if */
 #include <boost/optional.hpp>
 extern "C" {
 #include <link.h>
 }
 #include "relf.h" /* from librunt; used to get our ld binary's realpath -- bit of a HACK */
 #include "elfmap.hh"
+#include "cmdline.hh"
 
 /* To print stuff out, we mostly use the linker MESSAGE interface. 
  * But early on, we haven't snarfed it yet. */
@@ -78,6 +82,8 @@ extern "C" {
 
 using std::vector;
 using std::string;
+using std::set;
+using std::map;
 using std::smatch;
 using std::regex;
 using std::regex_match;
@@ -90,6 +96,7 @@ using namespace elftin;
 struct linker linker[1];
 std::vector<string> options;
 string output_file_name;
+map< pair<string, off_t>, set<string> > xwrapped_defined_symnames_by_input_file;
 
 vector<pair<string, const Elf64_Sym *> >
 symbols_with(const Elf64_Sym *symtab, 
@@ -163,11 +170,16 @@ undefined_symbols_matching(const Elf64_Sym *symtab,
 		});
 }
 
+/* FIXME: actually unlink.
+ * FIXME: make this robust across restarts.
+ * FIXME: do something about other plugins / core ld leaking resources across
+ * restarts (warn about fds >= 3 to linked files or non-CLOEXEC?) */
 static vector<string> temp_files_to_unlink;
 pair<string, int> new_temp_file(const string& insert)
 {
-	// FIXME: don't hard-code "/tmp"
-	char *tempnambuf = strdup(("/tmp/tmp." + insert + ".XXXXXX").c_str());
+	char *tempnambuf = strdup(
+		(string(getenv("TMPDIR")?:"/tmp") + "/tmp." + insert + ".XXXXXX").c_str()
+	);
 	int tmpfd = mkstemp(tempnambuf);
 	if (tmpfd == -1) abort(); // FIXME: better diagnostics
 	string tempnam = tempnambuf;
@@ -250,76 +262,35 @@ claim_file_handler (
 	 * So try: test whether it's a relocatable file, and if so, use
 	 * the section calls to find the symtab.
 	 */
-	// auto ret = get_symbols(file, 0, nullptr);
-	bool we_claim_it = false;
-	elfmap e(file->fd, file->offset);
-	if (e && 0 == strncmp((const char *) e.hdr->e_ident, "\x7f""ELF", 4))
+	auto found = xwrapped_defined_symnames_by_input_file.find(make_pair(file->name, file->offset));
+	if (found != xwrapped_defined_symnames_by_input_file.end()
+		&& found->second.size() > 0)
 	{
-		debug_println(0, "Mapped an ELF at %p", e.mapping);
-		if (e.hdr->e_ident[EI_CLASS] == ELFCLASS64 &&
-			e.hdr->e_ident[EI_DATA] == ELFDATA2LSB &&
-			e.hdr->e_type == ET_REL) // FIXME: archives
+		*claimed = 1;
+		/* Make a temp that will stand in for this file. */
+		auto tmpfile = new_temp_file("xwrap-ldplugin");
+		string tmpname = tmpfile.first;
+		int tmpfd = tmpfile.second;
+		if (tmpfd == -1) abort();
+		debug_println(0, "Claimed file is replaced by temporary %s", tmpname.c_str());
+		claimed_files.push_back(make_pair(file, tmpname));
+		for (auto i_sym = found->second.begin(); i_sym != found->second.end(); ++i_sym)
 		{
-			debug_println(0, "It's an interesting ELF");
-			/* Now we can use some of the linker functions. */
-			/* Can we walk its symbols? */
-			/* GAH. To get shdrs, need to do it ourselves. */
-			const Elf64_Shdr *shdrs = e.ptr<ElfW(Shdr)>(e.hdr->e_shoff);
-			/* Since we need to peek at the file contents to get
-			 * headers and the like, maybe the get_input_section_count
-			 * and get_input_section_contents calls are a bad idea.
-			 * I notice that only ld.gold implements them; ld.bfd
-			 * does not. */
-			ElfW(Shdr) *found;
-			if (nullptr != (found = e.find<SHT_SYMTAB>()))
-			{
-				ElfW(Sym) *symtab = e.ptr<ElfW(Sym>)(found->sh_offset);
-				char *strtab = e.ptr<char>((shdrs + found->sh_link)->sh_offset);
-				/* Walk the symtab looking for names that match */
-				for (ElfW(Sym) *sym = symtab; (uintptr_t) sym < (uintptr_t) symtab + found->sh_size; ++sym)
-				{
-					// claim the file if it defines a wrapped symbol
-					const char *name = &strtab[sym->st_name];
-					if (( ELFW_ST_TYPE(sym->st_info) == STT_OBJECT
-					  ||  ELFW_ST_TYPE(sym->st_info) == STT_FUNC)
-					  && (sym->st_shndx != SHN_UNDEF && sym->st_shndx != SHN_ABS)
-					  && std::find(options.begin(), options.end(), string(name))
-						!= options.end())
-					{
-						if (!*claimed)
-						{
-							*claimed = 1;
-							/* Make a temp that will stand in for this file. */
-							auto tmpfile = new_temp_file("xwrap-ldplugin");
-							string tmpname = tmpfile.first;
-							int tmpfd = tmpfile.second;
-							if (tmpfd == -1) abort();
-							debug_println(0, "Claimed file is replaced by temporary %s", tmpname.c_str());
-							claimed_files.push_back(make_pair(file, tmpname));
-						}
-						claimed_files.back().syms.push_back(name);
-					}
-				}
-			}
-		} /* end if is an interesting ELF file */
-		if (*claimed)
-		{
-			/* run the script to generate the file */
-			string cmd = path_to_fixup_script + " "
-				+ claimed_files.back().name + " " +  claimed_files.back().input_file->name;
-			for (auto i_sym = claimed_files.back().syms.begin();
-				i_sym != claimed_files.back().syms.end();
-				++i_sym)
-			{
-				cmd += string(" ") + *i_sym;
-			}
-			int ret = system(cmd.c_str());
-			// now claim the fixed-up file
+			claimed_files.back().syms.push_back(*i_sym);
 		}
+		/* run the script to generate a replacement file */
+		string cmd = path_to_fixup_script + " "
+			+ claimed_files.back().name + " " +  claimed_files.back().input_file->name;
+		for (auto i_sym = claimed_files.back().syms.begin();
+			i_sym != claimed_files.back().syms.end();
+			++i_sym)
+		{
+			cmd += string(" ") + *i_sym;
+		}
+		int ret = system(cmd.c_str()); // FIXME: do this in-process
+		if (ret != 0) abort();
+		// we will add the generated file in the all_symbols_read handler
 	}
-
-	// do we really want to do this?
-	input_files.push_back(file);
 
 	return LDPS_OK;
 }
@@ -466,33 +437,208 @@ onload(struct ld_plugin_tv *tv)
 	ElfW(auxv_t) *auxv = get_auxv_via_environ(environ, &auxv, (void*)-1);
 	assert(auxv);
 	struct auxv_limits auxv_limits = get_auxv_limits(auxv);
+	vector<string> cmdline_vec;
 	for (const char **p = auxv_limits.argv_vector_start; *p; ++p)
 	{
 		debug_println(0, "Saw arg: `%s'", *p);
+		cmdline_vec.push_back(*p);
 	}
-	/* Sanity check: if we're wrapping, let's not also xwrap.
-	 * FIXME: can now use linker->get_wrap_symbols() for this. */
-	vector<string> wrapped_syms;
-	for (const char **p = auxv_limits.argv_vector_start; *p; ++p)
-	{
-		if (*p == string("--wrap"))
+	/* We need -z muldefs. Restart if we don't have it. */
+	RESTART_IF(not_muldefs, missing_option_subseq({"-z", "muldefs"}), cmdline_vec);
+	debug_println(0, "-z muldefs was%s initially set",
+		not_muldefs.did_restart ? " not" : "");
+
+	auto get_xwrapped_defined_symnames_by_input_file = [](fmap const& f, off_t offset) -> set<string> {
+		set<string> xwrapped_symnames_defined;
+		if (f.mapping_size > 0 && 0 == memcmp(f, "\x7f""ELF", 4))
 		{
-			wrapped_syms.push_back(*(p+1));
+			elfmap e(f.fd, f.start_offset());
+			debug_println(0, "Mapped an ELF at %p+0x%x", e.mapping, f.start_offset_from_mapping_offset);
+			if (e.hdr->e_ident[EI_CLASS] == ELFCLASS64 &&
+				e.hdr->e_ident[EI_DATA] == ELFDATA2LSB &&
+				e.hdr->e_type == ET_REL) // FIXME: archives
+			{
+				debug_println(0, "It's an interesting ELF");
+				/* Now we can use some of the linker functions. */
+				/* Can we walk its symbols? */
+				/* GAH. To get shdrs, need to do it ourselves. */
+				const Elf64_Shdr *shdrs = e.ptr<ElfW(Shdr)>(e.hdr->e_shoff);
+				/* Since we need to peek at the file contents to get
+				 * headers and the like, maybe the get_input_section_count
+				 * and get_input_section_contents calls are a bad idea.
+				 * I notice that only ld.gold implements them; ld.bfd
+				 * does not. */
+				ElfW(Shdr) *found;
+				if (nullptr != (found = e.find<SHT_SYMTAB>()))
+				{
+					ElfW(Sym) *symtab = e.ptr<ElfW(Sym>)(found->sh_offset);
+					char *strtab = e.ptr<char>((shdrs + found->sh_link)->sh_offset);
+					/* Walk the symtab looking for names that match */
+					for (ElfW(Sym) *sym = symtab; (uintptr_t) sym < (uintptr_t) symtab + found->sh_size; ++sym)
+					{
+						// claim the file if it defines a wrapped symbol
+						const char *name = &strtab[sym->st_name];
+						if (( ELFW_ST_TYPE(sym->st_info) == STT_OBJECT
+						  ||  ELFW_ST_TYPE(sym->st_info) == STT_FUNC)
+						  && (sym->st_shndx != SHN_UNDEF && sym->st_shndx != SHN_ABS)
+						  && std::find(options.begin(), options.end(), string(name))
+							!= options.end())
+						{
+							/* It defines a wrapped symbol */
+							xwrapped_symnames_defined.insert(name);
+						}
+					}
+				}
+			}
+		}
+		return xwrapped_symnames_defined;
+	};
+	/* We want to do a pass over the input filenames to generate
+	 * firstly a set of objects, and for each identified object,
+	 * optionally an 'interesting fact' about it. */
+	xwrapped_defined_symnames_by_input_file = classify_input_objects< set<string> >(
+		enumerate_input_files(cmdline_vec), get_xwrapped_defined_symnames_by_input_file
+	);
+	set<string> all_xwrapped_defined_symnames;
+	for (auto i_pair = xwrapped_defined_symnames_by_input_file.begin();
+		i_pair != xwrapped_defined_symnames_by_input_file.end();
+		++i_pair)
+	{
+		for (auto i_symname = i_pair->second.begin(); i_symname != i_pair->second.end();
+			++i_symname)
+		{
+			all_xwrapped_defined_symnames.insert(*i_symname);
 		}
 	}
+	/* The --wrap options is tricky. We still need it for the cases
+	 * where the wrapped definition is in an external DSO, not in
+	 * our link output. Ideally it would look to the user like
+	 * 'xwrap' completely subsumes --wrap. */
+	auto missing_wrap_options = /* a function that looks for --wrap options and adds any missing */
+		[all_xwrapped_defined_symnames](vector<string> const& cmdline_vec) -> pair<bool, vector<string> > {
+		/* FIXME: can now use linker->get_wrap_symbols() for this. */
+		set<string> cmdline_wrapped_syms;
+		for (auto i_str = cmdline_vec.begin(); i_str != cmdline_vec.end(); ++i_str)
+		{
+			if (*i_str == string("--wrap"))
+			{
+				cmdline_wrapped_syms.insert(cmdline_vec.at(1 + (i_str - cmdline_vec.begin())));
+			}
+		}
+		/* We ensure --wrap options for all our xwrapped symbols
+		 * ***that are not defined in an input .o, .a or linker script file***
+		 * by adding any missing ones.
+		 * We have to iterate over all defined symbols in all input files. */
+		
+		set<string> wraps_needed;
+		for (auto i_opt = options.begin(); i_opt != options.end(); ++i_opt)
+		{
+			if (std::find(all_xwrapped_defined_symnames.begin(),
+				all_xwrapped_defined_symnames.end(), *i_opt)
+				== all_xwrapped_defined_symnames.end())
+			{
+				wraps_needed.insert(*i_opt);
+			}
+		}
+		// are there any wraps needed that we don't have?
+		set<string> missing;
+		for (auto i_needed = wraps_needed.begin(); i_needed != wraps_needed.end(); ++i_needed)
+		{
+			if (cmdline_wrapped_syms.find(*i_needed) == cmdline_wrapped_syms.end())
+			{
+				// not found
+				missing.insert(*i_needed);
+			}
+		}
+		if (missing.size() > 0)
+		{
+			vector<string> new_vec = cmdline_vec;
+			for (auto i_missing = missing.begin(); i_missing != missing.end(); ++i_missing)
+			{
+				new_vec.push_back("--wrap");
+				new_vec.push_back(*i_missing);
+				debug_println(0, "Added missing --wrap option for `%s'", i_missing->c_str());
+			}
+			return make_pair(true, new_vec);
+		}
+		return make_pair(false, cmdline_vec);
+	};
+	RESTART_IF(missing_any_wrap_options, missing_wrap_options, cmdline_vec);
+	debug_println(0, "all needed wrap options were%s initially set",
+		missing_any_wrap_options.did_restart ? " not" : "");
+
+	/* Now we have too much wrap!
+	 * We only want it for those files that are not defined locally.
+	 * So maybe instead of a restart, this needs to be an error?
+	 * i.e. our invoker needs to sort this out.
+	 * TRICKY: we want the file to be written before we're invoke,d although maybe
+	 * writing it as we go along os OK? Not clear.
+	 * I think we can use the check for --wrap to our advantage here.
+	 * Assume any --wrap symbol that is also xwrap'd was created
+	 * by us.
+	 * Then, later, if the set of --wrap symbols is not consistent with
+	 * our input (it includes exactly those xwrapped symbols that are not
+	 * locally defined, plus maybe some other non-xwrapped symbols)
+	 * we error out.
+	 * BUT how do we add --wrap when we need it? We don't know exactly
+	 * which wraps we need until we've processed the input files. So
+	 * we'd be relying on the invoker to supply those, which we didn't want.
+	 * I think a compromise on that is sane at this point.
+	 *
+	 * We could restart with all xwrapped symbols wrapped, and an
+	 * extra environment var to tell us that we added those. Then we
+	 * tolerate any 'consistent' set of --wrap options but error out
+	 * if any is locally defined *and* xwrapped *and* wrapped.
+	 * Oh, but then we need a way to remove from the wrap list.
+	 *
+	 * What is the resource leak issue? It's that if we restart after allocating
+	 * a resource that needs cleanup, it won't happen. We're assuming that either
+	 * (1) neither ld nor other plugins' "onload" allocate such resources, or.
+	 * (2) if other ld plugins do, we run before them.
+	 *
+	 * Also, what's the issue with just doing the check up-front?
+	 * We don't get a series of struct ld_plugin_input_file calls,
+
+
+	 * FIXME: if the symbol is not defined locally in any input .o file,
+	 * but rather in a .so file, bad news: we can't define a real __real_ by fixup.
+	 * However, there is also good news: we don't need to, because
+	 * it means there are no intra-.o bindings for 'muldefs' to unbind.
+	 * Instead we require one half of the original '--wrap' semantics:
+	 * resolve __real_foo to foo. (We still capture references to 'foo'
+	 * and divert them to '__wrap_foo', so the problem is how the wrapper
+	 * refers back to the wrappee, which is in a DSO.)
+	 * The fix is to remember which symbols we've handled by fixup,
+	 * and emit a --defsym for any that we haven't. OH but that's broken...
+	 * 
+	 * A possibly unintended consequence is that our wrapper for 'foo'
+	 * takes over the global 'foo' identity, which --wrap did not do.
+	 * Does this cause problems? E.g. if we're making an executable,
+	 * by virtue of *wrapping* calls to 'malloc', it will always
+	 * *define* a global 'malloc'. This feels wrong... how do we
+	 * ever call into the DSO that really defines the real malloc?
+	 * I think we have to change the semantics here. Erk. This is
+	 * unpleasant. Basically we can't do caller-side wrapping at present,
+	 * because --defsym __real_malloc=malloc will not work.
+	 *
+	 * I think we want 'xwrap' to use muldefs only if the symbol is to be
+	 * defined locally in the output object, and to fall back on plain
+	 * --wrap if the symbol is defined in a DSO. i.e. don't defsym and
+	 * moreover don't xwrap -- don't add to the linker script. Instead, wrap!
+	 * This means we will need another restart to add the possibly-missing
+	 * --wrap options. */
+
+#if 0
 	for (auto i_wrapped = wrapped_syms.begin(); i_wrapped != wrapped_syms.end(); ++i_wrapped)
 	{
 		if (std::find(options.begin(), options.end(), *i_wrapped) != options.end())
 		{
-			linker->message(LDPL_ERROR, "cannot wrap and xwrap the same symbol (`%s')", i_wrapped->c_str());
+			linker->message(LDPL_ERROR, "cannot wrap and xwrap the same symbol (`%s')",
+				i_wrapped->c_str());
 			return LDPS_ERR;
 		}
 	}
-
-	/* We need -z muldefs. Restart if we don't have it. */
-	RESTART_IF(not_muldefs, missing_option_subseq({"-z", "muldefs"}));
-	debug_println(0, "-z muldefs was%s previously set",
-		not_muldefs.did_restart ? " not" : "");
+#endif
 
 	/* Make a new linker script file, into which we write "sym = __wrap_sym;" lines.
 	 * OH, but what if we are re-execing? Then we don't want to create a new
@@ -505,14 +651,11 @@ onload(struct ld_plugin_tv *tv)
 	// So instead, esp as the above probably won't work anyway, re-exec with the tmpfile first
 	char *tmpldscript_realpathbuf = NULL;
 	auto missing_ldscript = /* a function that looks for the ldscript and prepends it if missing */
-		[&tmpldscript_realpathbuf](const char **cmdline) -> pair<bool, vector<string> > {
-		vector<string> cmdline_vec;
+		[&tmpldscript_realpathbuf, all_xwrapped_defined_symnames]
+		(vector<string> const& cmdline_vec) -> pair<bool, vector<string> > {
 		pair<bool, vector<string> > retval;
-		for (const char **p = cmdline; *p; ++p) cmdline_vec.push_back(*p);
 		char *path = NULL;
-#define STARTS_WITH(var, conststr) \
-(((var).substr(0, sizeof conststr - 1) == string(conststr)))
-		if (STARTS_WITH(string(cmdline[1]), "/proc/self/fd/")
+		if (STARTS_WITH(string(cmdline_vec.at(1)), "/proc/self/fd/")
 			&& STARTS_WITH(string(basename(tmpldscript_realpathbuf = realpath(cmdline_vec[1].c_str(), NULL))),
 				"tmp.xwrap-ldplugin-lds"))
 		{
@@ -529,28 +672,30 @@ onload(struct ld_plugin_tv *tv)
 			int tmpfd = tmpfile.second;
 			FILE *the_file = fdopen(tmpfd, "w+");
 			if (!the_file) abort();
-			for (auto i_sym = options.begin(); i_sym != options.end(); ++i_sym)
+			// FIXME: should only emit for those symbols where we found a definition
+			// in an incoming .o or .a file; for the others, do --wrap
+			for (auto i_sym = all_xwrapped_defined_symnames.begin();
+				i_sym != all_xwrapped_defined_symnames.end(); ++i_sym)
 			{
 				fprintf(the_file, "%s = __wrap_%s;\n", i_sym->c_str(), i_sym->c_str());
 			}
 			fflush(the_file);
 			std::ostringstream s; s << "/proc/self/fd/" << tmpfd;
-			cmdline_vec.insert(cmdline_vec.begin() + 1, s.str());
-			retval = make_pair(true, cmdline_vec);
+			vector<string> new_vec = cmdline_vec;
+			new_vec.insert(new_vec.begin() + 1, s.str());
+			retval = make_pair(true, new_vec);
 		}
 		return retval;
 	};
-	RESTART_IF(no_initial_ldscript, missing_ldscript);
-	debug_println(0, "ldscript was previously %s",
+	RESTART_IF(no_initial_ldscript, missing_ldscript, cmdline_vec);
+	debug_println(0, "ldscript was initially %s",
 		no_initial_ldscript.did_restart ? "missing" : "present");
 	/* DANGER: we want to avoid leaking the temporary file. We can unlink it, but
 	 * only after we're sure we're not going to restart any more, but not before
 	 * (else we can't realpath it). So we do this later (see below). */
 
-	/* Snarf the path to our fixup script. */
+	/* Snarf the path to our fixup script. We run it in claim_file_handler. */
 	path_to_fixup_script = string(dirname(get_link_map((void*) onload)->l_name)) + "/xwrap-fixup.sh";
-
-
 
 	if (tmpldscript_realpathbuf)
 	{

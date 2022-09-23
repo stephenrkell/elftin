@@ -42,19 +42,14 @@ using std::make_pair;
  * - firstly tells you whether we need to restart
  * - secondly gives you a fixed-up command line, with which to restart, such that
  *     there will be *no* need to restart next time. */
-typedef std::function<pair<bool,vector<string> >(const char**)> restart_criterion;
+typedef std::function<pair<bool,vector<string> >(vector<string> const&)> restart_criterion;
 
 /* missing_option_subseq is a restart criterion that tests whether
  * the command line contains a given contiguous subsequence,
  * and if it doesn't, creates a new command line that does. */
 auto missing_option_subseq = [](const vector<string>& seq) -> restart_criterion {
 	/* return a function that looks for the subseq and appends if it missing */
-	auto the_f = [seq](const char **cmdline) -> pair<bool, vector<string> > {
-		vector<string> cmdline_vec;
-		for (const char **p = cmdline; *p; ++p)
-		{
-			cmdline_vec.push_back(*p);
-		}
+	auto the_f = [seq](vector<string> const& cmdline_vec) -> pair<bool, vector<string> > {
 		auto match_found = [cmdline_vec, seq]() -> bool {
 			for (auto i = cmdline_vec.begin(); i != cmdline_vec.end(); ++i)
 			{
@@ -74,12 +69,13 @@ auto missing_option_subseq = [](const vector<string>& seq) -> restart_criterion 
 		};
 		if (!match_found())
 		{
+			vector<string> new_vec = cmdline_vec;
 			// append the subseq and return 'yes, restart with this'
 			for (auto i_seq = seq.begin(); i_seq != seq.end(); ++i_seq)
 			{
-				cmdline_vec.push_back(*i_seq);
+				new_vec.push_back(*i_seq);
 			}
-			return make_pair(true, cmdline_vec);
+			return make_pair(true, new_vec);
 		}
 		return make_pair(false, vector<string>());
 	};
@@ -128,15 +124,17 @@ struct restart_if
 			bufpos += len+1;
 		}
 		argv[cmdline.size()] = NULL;
+		fflush(stdout);
+		fflush(stderr);
 		return execve(argv[0], argv, environ); // should not return!
 	}
 	bool did_restart;
 	restart_if(restart_criterion cond,
 		       const char *condstr,
-		       const char **cmdline)
+		       vector<string> const& cmdline_vec)
 	{
 		string guard = mangle(condstr);
-		auto retpair = cond(cmdline);
+		auto retpair = cond(cmdline_vec);
 		if (retpair.first && getenv(guard.c_str())) abort();
 		else if (retpair.first)
 		{
@@ -158,8 +156,8 @@ struct restart_if
 #define stringifya(...) # __VA_ARGS__
 // stringify expanded
 #define stringifxa(...) stringifya(__VA_ARGS__)
-#define RESTART_IF(id, cond) \
-	restart_if id(cond, stringifxa(cond), auxv_limits.argv_vector_start)
+#define RESTART_IF(id, cond, cmdvec) \
+	restart_if id(cond, stringifxa(cond), cmdvec)
 
 } /* end namespace elftin */
 
