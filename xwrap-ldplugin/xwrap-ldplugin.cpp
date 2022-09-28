@@ -424,7 +424,7 @@ onload(struct ld_plugin_tv *tv)
 			CASE_FP(GET_INPUT_SECTION_ALIGNMENT, get_input_section_alignment) break;
 			CASE_FP(GET_INPUT_SECTION_SIZE, get_input_section_size) break;
 			CASE_FP_REGISTER(NEW_INPUT_HOOK, new_input) break;
-			CASE_FP(GET_WRAP_SYMBOLS, get_wrap_symbols) break;
+			//CASE_FP(GET_WRAP_SYMBOLS, get_wrap_symbols) break;
 			default:
 				debug_println(0, "Did not recognise transfer vector element %d", 
 					(int) i_tv->tv_tag);
