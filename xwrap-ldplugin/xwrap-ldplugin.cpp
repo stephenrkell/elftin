@@ -663,7 +663,7 @@ onload(struct ld_plugin_tv *tv)
 			// nothing to put in the ldscript, so we're fine
 			retval = make_pair(false, cmdline_vec);
 		}
-		if (STARTS_WITH(string(cmdline_vec.at(1)), "/proc/self/fd/")
+		else if (STARTS_WITH(string(cmdline_vec.at(1)), "/proc/self/fd/")
 			&& STARTS_WITH(string(basename(tmpldscript_realpathbuf = realpath(cmdline_vec[1].c_str(), NULL))),
 				"tmp.xwrap-ldplugin-lds"))
 		{
