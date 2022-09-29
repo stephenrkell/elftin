@@ -648,13 +648,21 @@ onload(struct ld_plugin_tv *tv)
 	 * to one of our fds. */
 	/* Seems we can't do this yet... too early / no workqueue (in gold). */
 	// linker->add_input_file(strdup(tmpname.c_str()));
-	// So instead, esp as the above probably won't work anyway, re-exec with the tmpfile first
+	// So instead, esp as the above probably won't work anyway (need to add
+	// at the *beginning* of te link, but the API doesn't let is request this),
+	// re-exec with the tmpfile first
 	char *tmpldscript_realpathbuf = NULL;
 	auto missing_ldscript = /* a function that looks for the ldscript and prepends it if missing */
 		[&tmpldscript_realpathbuf, all_xwrapped_defined_symnames]
 		(vector<string> const& cmdline_vec) -> pair<bool, vector<string> > {
 		pair<bool, vector<string> > retval;
 		char *path = NULL;
+		if (all_xwrapped_defined_symnames.begin() ==
+			all_xwrapped_defined_symnames.end())
+		{
+			// nothing to put in the ldscript, so we're fine
+			retval = make_pair(false, cmdline_vec);
+		}
 		if (STARTS_WITH(string(cmdline_vec.at(1)), "/proc/self/fd/")
 			&& STARTS_WITH(string(basename(tmpldscript_realpathbuf = realpath(cmdline_vec[1].c_str(), NULL))),
 				"tmp.xwrap-ldplugin-lds"))
@@ -689,7 +697,7 @@ onload(struct ld_plugin_tv *tv)
 	};
 	RESTART_IF(no_initial_ldscript, missing_ldscript, cmdline_vec);
 	debug_println(0, "ldscript was initially %s",
-		no_initial_ldscript.did_restart ? "missing" : "present");
+		no_initial_ldscript.did_restart ? "missing yet needed" : "present or unnecessary");
 	/* DANGER: we want to avoid leaking the temporary file. We can unlink it, but
 	 * only after we're sure we're not going to restart any more, but not before
 	 * (else we can't realpath it). So we do this later (see below). */
