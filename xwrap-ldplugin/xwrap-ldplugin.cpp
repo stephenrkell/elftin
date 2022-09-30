@@ -496,8 +496,13 @@ onload(struct ld_plugin_tv *tv)
 	/* We want to do a pass over the input filenames to generate
 	 * firstly a set of objects, and for each identified object,
 	 * optionally an 'interesting fact' about it. */
+	auto input_files = enumerate_input_files(cmdline_vec);
+	for (auto i_file = input_files.begin(); i_file != input_files.end(); ++i_file)
+	{
+		debug_println(0, "Input file: %s", i_file->c_str());
+	}
 	xwrapped_defined_symnames_by_input_file = classify_input_objects< set<string> >(
-		enumerate_input_files(cmdline_vec), get_xwrapped_defined_symnames_by_input_file
+		input_files, get_xwrapped_defined_symnames_by_input_file
 	);
 	set<string> all_xwrapped_defined_symnames;
 	for (auto i_pair = xwrapped_defined_symnames_by_input_file.begin();
@@ -507,6 +512,7 @@ onload(struct ld_plugin_tv *tv)
 		for (auto i_symname = i_pair->second.begin(); i_symname != i_pair->second.end();
 			++i_symname)
 		{
+			debug_println(0, "Xwrapped symname: %s", i_symname->c_str());
 			all_xwrapped_defined_symnames.insert(*i_symname);
 		}
 	}
@@ -661,6 +667,7 @@ onload(struct ld_plugin_tv *tv)
 			all_xwrapped_defined_symnames.end())
 		{
 			// nothing to put in the ldscript, so we're fine
+			debug_println(0, "No xwrapped defined symnames!");
 			retval = make_pair(false, cmdline_vec);
 		}
 		else if (STARTS_WITH(string(cmdline_vec.at(1)), "/proc/self/fd/")

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <functional>
 #include <utility>
+#include <err.h>
 
 #define getenv_ignoring_equals(key_with_equals) ({ \
      size_t bufsz = strlen(key_with_equals); \
@@ -126,7 +127,9 @@ struct restart_if
 		argv[cmdline.size()] = NULL;
 		fflush(stdout);
 		fflush(stderr);
-		return execve(argv[0], argv, environ); // should not return!
+		char *exepath = realpath("/proc/self/exe", NULL);
+		argv[0] = exepath;
+		return execve(exepath, argv, environ); // should not return!
 	}
 	bool did_restart;
 	restart_if(restart_criterion cond,
@@ -135,12 +138,17 @@ struct restart_if
 	{
 		string guard = mangle(condstr);
 		auto retpair = cond(cmdline_vec);
-		if (retpair.first && getenv(guard.c_str())) abort();
+		if (retpair.first && getenv(guard.c_str()))
+		{
+			// this is a pure logic error... should not happen
+			abort();
+		}
 		else if (retpair.first)
 		{
 			putenv(strdup((guard + "=").c_str()));
 			do_restart(retpair.second);
-			abort();
+			// exec failed... why?
+			err(EXIT_FAILURE, "self-execing for reason `%s'", condstr);
 		}
 		else if (getenv(guard.c_str()))
 		{
