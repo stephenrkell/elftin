@@ -28,7 +28,8 @@ inline vector<string> enumerate_input_files(vector<string> const& cmdline)
 	vector<string> files;
 	bool seen_dashdash = false;
 	enum { DEFAULT, STATIC, DYNAMIC } bindmode = DEFAULT;
-	for (auto i_opt = cmdline.begin(); i_opt != cmdline.end(); ++i_opt)
+	// skip argv[0]
+	for (auto i_opt = cmdline.begin() + 1; i_opt != cmdline.end(); ++i_opt)
 	{
 		string opt = *i_opt;
 		if (STARTS_WITH(opt, "-")
