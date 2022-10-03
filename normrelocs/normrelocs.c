@@ -281,7 +281,7 @@ int main(int argc, char **argv)
 					if (!done_rewrite)
 					{
 						warnx("did not rewrite a from-debug reloc using ordinary symbol `%s'",
-							strtab[sym->st_name]);
+							&strtab[sym->st_name]);
 					}
 				}
 				else if (!IS_A_DEBUGGING_SECTION(relocated_sect_shdr) &&
