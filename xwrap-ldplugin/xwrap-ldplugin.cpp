@@ -337,7 +337,9 @@ mv "$newtmp" "$tmpname"
 			;
 			if (buflen - 1 /* for NUL */ < newstrlen)
 			{
-				size_t newbuflen = MIN(buflen * 2, newstrlen + 1);
+				size_t newbuflen = /*MIN*/ ((buflen * 2) > (newstrlen + 1)) ?
+					(newstrlen + 1)
+					: (buflen * 2);
 				cmdstr = reinterpret_cast<char*>(realloc(cmdstr, newbuflen));
 				if (!cmdstr) abort();
 				buflen = malloc_usable_size(cmdstr);
@@ -525,7 +527,7 @@ onload(struct ld_plugin_tv *tv)
 		if (f.mapping_size > 0 && 0 == memcmp(f, "\x7f""ELF", 4))
 		{
 			elfmap e(f.fd, f.start_offset());
-			debug_println(0, "Mapped an ELF at %p+0x%x", e.mapping, f.start_offset_from_mapping_offset);
+			debug_println(0, "Mapped an ELF at %p+0x%x", e.mapping, (unsigned) f.start_offset_from_mapping_offset);
 			if (e.hdr->e_ident[EI_CLASS] == ELFCLASS64 &&
 				e.hdr->e_ident[EI_DATA] == ELFDATA2LSB &&
 				e.hdr->e_type == ET_REL) // FIXME: archives
