@@ -1,7 +1,11 @@
-CXXFLAGS := -fPIC
+CXXFLAGS += -fPIC
+CFLAGS += -fPIC
 ifneq ($(LIBRUNT),)
 CXXFLAGS += -I$(LIBRUNT)/include
 endif
+CXXFLAGS += -I../normrelocs
+CFLAGS +=   -I../normrelocs
+vpath %.c ../normrelocs
 
 CXXFLAGS += -g
 
@@ -9,7 +13,10 @@ CXXFLAGS += -g
 default: xwrap-ldplugin.so
 
 %.so: %.cpp
-	$(CXX) -o $@ -shared $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) $(LDLIBS) $<
+	$(CXX) -o $@ -shared $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) $+ $(LDLIBS)
+xwrap-ldplugin.so: LDLIBS += -lbsd -lboost_filesystem
+xwrap-ldplugin.so: normrelocs.o
+normrelocs.o: CFLAGS += -DNORMRELOCS_AS_LIBRARY
 
 # HACK
 /tmp/hello.c:

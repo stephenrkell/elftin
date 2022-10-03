@@ -11,6 +11,10 @@
 #include <unistd.h>
 #include <err.h>
 
+#ifdef SYM2UND_AS_LIBRARY
+#include "sym2und.h"
+#endif
+
 /*
  Here we rewrite an ELF file so that the given symbol
  becomes an undefined symbol
@@ -20,6 +24,10 @@ static void usage(const char *basename)
 {
 	fprintf(stderr, "Usage: %s <filename> <sym>\n", basename);
 }
+#ifdef SYM2UND_AS_LIBRARY
+int sym2und(char *filename, char *symbol)
+{
+#else
 int main(int argc, char **argv)
 {
 	if (argc < 3)
@@ -30,7 +38,7 @@ int main(int argc, char **argv)
 
 	char *filename = argv[1];
 	char *symbol = argv[2];
-
+#endif
 	int fd = open(filename, O_RDWR);
 	if (fd == -1)
 	{

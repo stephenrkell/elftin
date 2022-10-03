@@ -55,10 +55,14 @@
 #include <utility> /* for pair */
 #include <algorithm> /* for find_if and remove_if */
 #include <boost/optional.hpp>
+#include <boost/filesystem.hpp>
+#include <bsd/string.h>
 extern "C" {
 #include <link.h>
 }
+#include <malloc.h> /* for malloc_usable_size */
 #include "relf.h" /* from librunt; used to get our ld binary's realpath -- bit of a HACK */
+#include "normrelocs.h"
 #include "elfmap.hh"
 #include "cmdline.hh"
 
@@ -94,6 +98,7 @@ using boost::optional;
 using namespace elftin;
 
 struct linker linker[1];
+string ldcmd;
 std::vector<string> options;
 string output_file_name;
 map< pair<string, off_t>, set<string> > xwrapped_defined_symnames_by_input_file;
@@ -195,8 +200,6 @@ static int api_version;
 static int gold_version;
 static int gnu_ld_version;
 
-string path_to_fixup_script;
-
 /* The plugin library's "claim file" handler.  */
 struct claimed_file
 {
@@ -278,18 +281,80 @@ claim_file_handler (
 		{
 			claimed_files.back().syms.push_back(*i_sym);
 		}
-		/* run the script to generate a replacement file */
-		string cmd = path_to_fixup_script + " "
-			+ claimed_files.back().name + " " +  claimed_files.back().input_file->name;
+		/* We used to run the following script to generate a replacement file.
+
+echo "$0" "$@" 1>&2
+tmpname="$1"
+shift
+origname="$1"
+shift
+# now we have symnames in $@
+
+NORMRELOCS="${NORMRELOCS:-`dirname "$0"`/../normrelocs/normrelocs}"
+
+cat "$origname" > "$tmpname"
+for sym in $@; do
+    ${NORMRELOCS} "$tmpname" "$sym" || exit 1
+done
+newtmp=`mktemp --suffix=.o`
+ld -r `for sym in $@; do echo --defsym __real_$sym=$sym; done` -o "$newtmp" "$tmpname" && \
+mv "$newtmp" "$tmpname"
+
+		 */
+		// copy origname to tmpname
+		boost::filesystem::path origname_p(string(claimed_files.back().input_file->name));
+		boost::filesystem::path tmpname_p(tmpname);
+		boost::filesystem::copy_file(origname_p, tmpname_p,
+			boost::filesystem::copy_option::overwrite_if_exists); // FIXME: error handling?
+
+		// for all syms, do normrelocs <sym> on file tmpname
 		for (auto i_sym = claimed_files.back().syms.begin();
 			i_sym != claimed_files.back().syms.end();
 			++i_sym)
 		{
-			cmd += string(" ") + *i_sym;
+			int ret = normrelocs((char*) tmpname.c_str(), (char*) i_sym->c_str());
+			if (ret != 0) abort(); // FIXME: error reporting
 		}
-		int ret = system(cmd.c_str()); // FIXME: do this in-process
-		if (ret != 0) abort();
-		// we will add the generated file in the all_symbols_read handler
+		// do ld -r `--defsym othersym` (for all othersyms in claimed_files.back().syms.begin())
+		pair<string, int> newtmp = new_temp_file("xwrap-ldplugin-ld-defsymd");
+		char *cmdstr;
+		int ret = asprintf(&cmdstr, "'%s' -r -o '%s' '%s'", ldcmd.c_str(), newtmp.first.c_str(),
+			tmpname.c_str());
+		if (ret < 0) abort();
+		size_t bufstrlen = ret;
+		size_t buflen = malloc_usable_size(cmdstr);
+		for (auto i_sym = claimed_files.back().syms.begin();
+			i_sym != claimed_files.back().syms.end();
+			++i_sym)
+		{
+			// realloc the buffer if necessary
+			size_t newstrlen = bufstrlen
+			+ (sizeof " --defsym __real_" -1) /* -1 for NUL */
+			+ i_sym->length();
+			+ 1 /* for = */
+			+ i_sym->length();
+			while (buflen - 1 /* for NUL */ < newstrlen)
+			{
+				cmdstr = reinterpret_cast<char*>(realloc(cmdstr, buflen *= 2));
+				if (!cmdstr) abort();
+			}
+			bufstrlen = strlcat(cmdstr, " --defsym __real_", buflen);
+			assert(bufstrlen <= buflen - 1);
+			bufstrlen = strlcat(cmdstr, i_sym->c_str(), buflen);
+			assert(bufstrlen <= buflen - 1);
+			bufstrlen = strlcat(cmdstr, "=", buflen);
+			assert(bufstrlen <= buflen - 1);
+			bufstrlen = strlcat(cmdstr, i_sym->c_str(), buflen);
+			assert(bufstrlen <= buflen - 1);
+		}
+		debug_println(0, "system()ing cmdstr: %s", cmdstr);
+		ret = system(cmdstr);
+		free(cmdstr);
+		if (ret != 0) abort(); // FIXME
+		// yielding a new temporary file
+
+		// then move that temporary file to tmpname
+		boost::filesystem::rename(boost::filesystem::path(newtmp.first), tmpname_p);
 	}
 
 	return LDPS_OK;
@@ -443,6 +508,7 @@ onload(struct ld_plugin_tv *tv)
 		debug_println(0, "Saw arg: `%s'", *p);
 		cmdline_vec.push_back(*p);
 	}
+	ldcmd = cmdline_vec.at(0);
 	/* We need -z muldefs. Restart if we don't have it. */
 	RESTART_IF(not_muldefs, missing_option_subseq({"-z", "muldefs"}), cmdline_vec);
 	debug_println(0, "-z muldefs was%s initially set",
@@ -708,9 +774,6 @@ onload(struct ld_plugin_tv *tv)
 	/* DANGER: we want to avoid leaking the temporary file. We can unlink it, but
 	 * only after we're sure we're not going to restart any more, but not before
 	 * (else we can't realpath it). So we do this later (see below). */
-
-	/* Snarf the path to our fixup script. We run it in claim_file_handler. */
-	path_to_fixup_script = string(dirname(get_link_map((void*) onload)->l_name)) + "/xwrap-fixup.sh";
 
 	if (tmpldscript_realpathbuf)
 	{

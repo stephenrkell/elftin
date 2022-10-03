@@ -14,6 +14,10 @@
 #include <err.h>
 #include <assert.h>
 
+#ifdef NORMRELOCS_AS_LIBRARY
+#include "normrelocs.h"
+#endif
+
 /*
  Here we rewrite an ELF file so that for any relocation record,
  if it is using a section symbol but
@@ -67,6 +71,10 @@ int compare_remembered_sym_by_addr(const void *s1, const void *s2)
 			- (intptr_t) ((struct remembered_symbol *) s2)->sym
 	);
 }
+#ifdef NORMRELOCS_AS_LIBRARY
+int normrelocs(char *filename, char *maybe_symname)
+{
+#else
 int main(int argc, char **argv)
 {
 	if (argc < 2) // second arg is optional
@@ -77,7 +85,7 @@ int main(int argc, char **argv)
 
 	char *filename = argv[1];
 	char *maybe_symname = argv[2];
-
+#endif
 	int fd = open(filename, O_RDWR);
 	if (fd == -1)
 	{
