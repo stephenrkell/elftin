@@ -322,6 +322,7 @@ mv "$newtmp" "$tmpname"
 			tmpname.c_str());
 		if (ret < 0) abort();
 		size_t bufstrlen = ret;
+		assert(bufstrlen == strlen(cmdstr));
 		size_t buflen = malloc_usable_size(cmdstr);
 		for (auto i_sym = claimed_files.back().syms.begin();
 			i_sym != claimed_files.back().syms.end();
@@ -330,14 +331,18 @@ mv "$newtmp" "$tmpname"
 			// realloc the buffer if necessary
 			size_t newstrlen = bufstrlen
 			+ (sizeof " --defsym __real_" -1) /* -1 for NUL */
-			+ i_sym->length();
+			+ i_sym->length()
 			+ 1 /* for = */
-			+ i_sym->length();
-			while (buflen - 1 /* for NUL */ < newstrlen)
+			+ i_sym->length()
+			;
+			if (buflen - 1 /* for NUL */ < newstrlen)
 			{
-				cmdstr = reinterpret_cast<char*>(realloc(cmdstr, buflen *= 2));
+				size_t newbuflen = MIN(buflen * 2, newstrlen + 1);
+				cmdstr = reinterpret_cast<char*>(realloc(cmdstr, newbuflen));
 				if (!cmdstr) abort();
+				buflen = malloc_usable_size(cmdstr);
 			}
+			assert(bufstrlen <= buflen - 1);
 			bufstrlen = strlcat(cmdstr, " --defsym __real_", buflen);
 			assert(bufstrlen <= buflen - 1);
 			bufstrlen = strlcat(cmdstr, i_sym->c_str(), buflen);
@@ -346,6 +351,7 @@ mv "$newtmp" "$tmpname"
 			assert(bufstrlen <= buflen - 1);
 			bufstrlen = strlcat(cmdstr, i_sym->c_str(), buflen);
 			assert(bufstrlen <= buflen - 1);
+			assert(bufstrlen == strlen(cmdstr));
 		}
 		debug_println(0, "system()ing cmdstr: %s", cmdstr);
 		ret = system(cmdstr);
