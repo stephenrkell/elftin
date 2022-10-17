@@ -1,13 +1,11 @@
 This is elftin, a possibly-growing selection of scripts/tools which do 
 wonderful and strange things with ELF binaries.
 
-It's not really documented, but you could read my blog post.
-<https://humprog.org/~stephen/blog/2017/02/14#custom-elf-phdrs>
-
 Currently there are the following scripts/tools:
 
 - custom-phdrs: lets you relink a binary to include a custom ELF program 
-header, with whatever content you like
+header, with whatever content you like. You could read my blog post.
+<https://humprog.org/~stephen/blog/2017/02/14#custom-elf-phdrs>
 
 - embed-file: extends custom-phdrs so that the added program header is 
 accompanied by a binary blob that is inserted into the file, with the 
@@ -31,9 +29,10 @@ code, e.g. from debugging information). This is sometimes useful after
 globalizing a symbol using objcopy, since the assembler may have chosen 
 section-relative relocs against local symbols.
 
-- abs2und: update an ELF file, in place, turning ABS symbols into UND 
-symbols. This is part of a bigger recipe for symbol wrapping which I 
-haven't published or documented properly yet.
+- abs2und, sym2und: update an ELF file, in place, turning some symbols
+into UND symbols. This is part of a bigger recipe for symbol wrapping,
+which is documented on my blog.
+<https://www.humprog.org/%7Estephen/blog/2022/08/03#elf-symbol-wrapping-via-replacement>
 
 - sym2dyn: following use of 'objcopy' that updates the (static) symbol
 table, propagate changes to the dynamic symbol table. This requires
@@ -41,3 +40,9 @@ librunt headers at build time. Currently it is very limited, e.g. cannot
 add new strings to dynstr (so renames must use a subsequence of an
 existing symbol name), cannot regenerate GNU symbol hash table (so input
 binaries must use only the SysV table).
+
+- xwrap-ldplugin: a linker plugin for doing extended wrapping ('xwrap'),
+overcoming some of the problems with the standard ld --wrap feature.
+The overall technique is documented under the 'sym2und' link above,
+and the plugin specifically is documented in a separate blog post.
+<https://www.humprog.org/%7Estephen/blog/2022/10/06#elf-symbol-wrapping-plugin>
