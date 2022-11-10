@@ -97,7 +97,8 @@ using boost::optional;
 
 using namespace elftin;
 
-struct linker linker[1];
+struct linker_s the_linker;
+struct linker_s *linker = &the_linker;
 string ldcmd;
 std::vector<string> options;
 string output_file_name;

@@ -16,6 +16,8 @@
      getenv(buf); \
 })
 
+#include "plugin-api.hh"
+
 namespace elftin
 {
 

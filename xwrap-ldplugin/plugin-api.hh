@@ -1,13 +1,20 @@
 #ifndef PLUGIN_API_HH_
 #define PLUGIN_API_HH_
 
+#include "plugin-api.h"
+
+namespace elftin {
+
 /* Linker interfaces: direct interaction.
  * These are populated from the transfer vector.
  * PROBLEM: even for the same LDPT_API_VERSION,
  * we can get different subsets of the interface.
  * So we have to check for the presence of the operations
- * we care about. */
-struct linker {
+ * we care about.
+ * (We could define multiple 'linker' classes and use
+ * vtable dispatch. That would entail a bunch more glue,
+ * however. We could even maybe synthesise the vtable... yuck/yum.) */
+struct linker_s {
 
 /* The linker's interface for adding symbols from a claimed input file.  */
 enum ld_plugin_status
@@ -160,9 +167,12 @@ enum ld_plugin_status
 enum ld_plugin_status
 (*register_new_input) (ld_plugin_new_input_handler handler);
 
-
 };
 
-extern struct linker linker[1]; /* HACK so we can do linker-> */
+} /* end namespace elftin */
+
+/* In the global namespace, declare 'linker' -- by default
+ * this gets created with LINKER_PLUGIN() along with onload(). */
+extern struct elftin::linker_s *linker;
 
 #endif

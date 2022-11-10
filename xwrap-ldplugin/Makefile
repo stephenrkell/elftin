@@ -14,7 +14,8 @@ default: xwrap-ldplugin.so
 
 %.so: %.cpp
 	$(CXX) -o $@ -shared $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) $+ $(LDLIBS)
-xwrap-ldplugin.so: LDLIBS += -lbsd -lboost_filesystem
+BOOST_FILESYSTEM_LIB ?= -lboost_filesystem
+xwrap-ldplugin.so: LDLIBS += -lbsd $(BOOST_FILESYSTEM_LIB)
 xwrap-ldplugin.so: normrelocs.o
 normrelocs.o: CFLAGS += -DNORMRELOCS_AS_LIBRARY
 
@@ -24,6 +25,9 @@ normrelocs.o: CFLAGS += -DNORMRELOCS_AS_LIBRARY
 
 # use LD_DELAY_STARTUP to attach debugger
 # use gold for now as it supports a wider API
+# boost filesystem 'invalid free' problem at shutdown: WHAT is this?
+# could be coming from my use of ancient boost 1.55?
+# Yes, upgrading to 1.67 seems to fix things.
 .PHONY: test
 test: xwrap-ldplugin.so /tmp/hello.c wrap-main.o
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDLIBS) -o /tmp/hello /tmp/hello.c \
