@@ -17,6 +17,7 @@
 })
 
 #include "plugin-api.hh"
+#include "base-ldplugin.hh"
 
 namespace elftin
 {

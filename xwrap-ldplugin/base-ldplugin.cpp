@@ -10,7 +10,12 @@
 #include <unistd.h> /* for sleep() */
 #include <utility> /* for pair */
 #include <boost/optional.hpp>
+extern "C" {
+#include <link.h>
+}
+
 #include "base-ldplugin.hh"
+#include "relf.h" /* from librunt; used to get our ld binary's realpath -- bit of a HACK */
 
 using std::vector;
 using std::string;
@@ -79,7 +84,7 @@ linker_plugin::linker_plugin(struct ld_plugin_tv *tv)
 			CASE_STRINGMANY(OPTION, options) /* This is -plugin-opt */ break;
 			CASE_FP_REGISTER(CLAIM_FILE_HOOK, claim_file) break;
 			CASE_FP_REGISTER(ALL_SYMBOLS_READ_HOOK, all_symbols_read) break;
-			CASE_FP_REGISTER(CLEANUP_HOOK, cleanup) break;
+			CASE_FP(REGISTER_CLEANUP_HOOK, register_cleanup) break; // NOT registered -- use destructor
 			CASE_FP(ADD_SYMBOLS, add_symbols) break;
 			CASE_FP(GET_SYMBOLS, get_symbols) break;
 			CASE_FP(ADD_INPUT_FILE, add_input_file) break;
@@ -111,7 +116,35 @@ linker_plugin::linker_plugin(struct ld_plugin_tv *tv)
 				break;
 		}
 	}
+	/* Let's also inspect our command line. If we don't like it,
+	 * we may want to re-exec ourselves. */
+	ElfW(auxv_t) *auxv = get_auxv_via_environ(environ, &auxv, (void*)-1);
+	assert(auxv);
+	struct auxv_limits auxv_limits = get_auxv_limits(auxv);
+	for (const char **p = auxv_limits.argv_vector_start; *p; ++p)
+	{
+		debug_println(0, "Saw arg: `%s'", *p);
+		job->cmdline.push_back(*p);
+	}
+	job->ld_cmd = job->cmdline.at(0);
 }
+
+/* utility code */
+
+pair<string, int> linker_plugin::new_temp_file(const string& insert)
+{
+	char *tempnambuf = strdup(
+		(string(getenv("TMPDIR")?:"/tmp") + "/tmp." + insert + ".XXXXXX").c_str()
+	);
+	int tmpfd = mkstemp(tempnambuf);
+	if (tmpfd == -1) abort(); // FIXME: better diagnostics
+	string tempnam = tempnambuf;
+	free(tempnambuf);
+	temp_files_to_unlink.push_back(tempnam);
+	return make_pair(tempnam, tmpfd);
+}
+
+/* default implementations */
 
 enum ld_plugin_status
 linker_plugin::claim_file (
@@ -133,13 +166,6 @@ enum ld_plugin_status
 linker_plugin::new_input(const struct ld_plugin_input_file *file)
 {
 	debug_println(0, "new input handler called ()");
-	return LDPS_OK;
-}
-
-enum ld_plugin_status
-linker_plugin::cleanup()
-{
-	debug_println(0, "cleanup handler called ()");
 	return LDPS_OK;
 }
 

@@ -3,6 +3,9 @@ CFLAGS += -fPIC
 ifneq ($(LIBRUNT),)
 CXXFLAGS += -I$(LIBRUNT)/include
 endif
+ifneq ($(LIBSRK31CXX),)
+CXXFLAGS += -I$(LIBSRK31CXX)/include
+endif
 CXXFLAGS += -I../normrelocs
 CFLAGS +=   -I../normrelocs
 vpath %.c ../normrelocs
@@ -15,8 +18,8 @@ default: xwrap-ldplugin.so
 %.so: %.cpp
 	$(CXX) -o $@ -shared $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) $+ $(LDLIBS)
 BOOST_FILESYSTEM_LIB ?= -lboost_filesystem
-xwrap-ldplugin.so: LDLIBS += -lbsd $(BOOST_FILESYSTEM_LIB)
-xwrap-ldplugin.so: normrelocs.o
+xwrap-ldplugin.so: LDLIBS += -lbsd $(BOOST_FILESYSTEM_LIB) -lffi
+xwrap-ldplugin.so: normrelocs.o base-ldplugin.o
 normrelocs.o: CFLAGS += -DNORMRELOCS_AS_LIBRARY
 
 # HACK
