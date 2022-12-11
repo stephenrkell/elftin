@@ -13,13 +13,17 @@ vpath %.c ../normrelocs
 CXXFLAGS += -g
 
 .PHONY: default
-default: xwrap-ldplugin.so
+default: xwrap-ldplugin.so base-ldplugin.a
 
-%.so: %.cpp
-	$(CXX) -o $@ -shared $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) $+ $(LDLIBS)
+# we always build a .a and a .so
+%.so: %.a
+	$(CXX) -o $@ -shared $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) -Wl,--whole-archive $< -Wl,--no-whole-archive $(LDLIBS)
 BOOST_FILESYSTEM_LIB ?= -lboost_filesystem
 xwrap-ldplugin.so: LDLIBS += -lbsd $(BOOST_FILESYSTEM_LIB) -lffi
-xwrap-ldplugin.so: normrelocs.o base-ldplugin.o
+xwrap-ldplugin.a: normrelocs.o base-ldplugin.o xwrap-ldplugin.o
+	$(AR) r "$@" $+
+base-ldplugin.a: base-ldplugin.o
+	$(AR) r "$@" $+
 normrelocs.o: CFLAGS += -DNORMRELOCS_AS_LIBRARY
 
 # HACK
