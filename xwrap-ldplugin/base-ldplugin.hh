@@ -3,10 +3,10 @@
 
 /* To print stuff out, we mostly use the linker MESSAGE interface.
  * But early on, we haven't snarfed it yet. */
-#define debug_println(lvl_ignored, fmt, ...) \
+#define debug_println(lvl_ignored, fmt, args...) \
     do { \
-       if (::linker && ::linker->message) ::linker->message(LDPL_INFO, fmt __VA_OPT__(,) ## __VA_ARGS__ ); \
-       else { fprintf(stderr, fmt "\n" __VA_OPT__(,) ## __VA_ARGS__); fflush(stderr); } \
+       if (::linker && ::linker->message) ::linker->message(LDPL_INFO, fmt /*__VA_OPT__(,) ## __VA_ARGS__*/ , ##args ); \
+       else { fprintf(stderr, fmt "\n" /*__VA_OPT__(,) ## __VA_ARGS__*/ , ##args ); fflush(stderr); } \
         /* HMM. fflushing stderr no longer works! Delay but no message until too late. */ \
         /* Is this an artifact of prettified output? */ \
         /* stderr is going to a file in /tmp /tmp/ccQhnr0p.le */ \
@@ -88,7 +88,7 @@ struct linker_plugin
     v(enum ld_plugin_status, new_input, w(const struct ld_plugin_input_file *, file))
 #define type_and_name(t, n) t n
 #define type_only(t, n) t
-#define declare_member(rett, name, args...) virtual rett name( args );
+#define declare_member(rett, name, ...) virtual rett name( __VA_ARGS__ );
 	member_functions(declare_member, type_and_name)
 #define declare_member_closure(rett, name, ...) \
     unique_ptr<rett( __VA_ARGS__ ), srk31::ffi_closure_s<linker_plugin, rett __VA_OPT__(,) __VA_ARGS__>::closure_deleter > name ## _closure;
