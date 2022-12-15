@@ -151,6 +151,7 @@ linker_plugin::claim_file (
   const struct ld_plugin_input_file *file, int *claimed)
 {
 	debug_println(0, "claim-file handler called (on `%s', currently %d)", file->name, *claimed);
+	job->input_files.insert(make_pair(make_pair(file->name, file->offset), *claimed));
 	return LDPS_OK;
 }
 

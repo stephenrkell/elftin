@@ -302,62 +302,36 @@ struct xwrap_plugin : elftin::linker_plugin
 		debug_println(0, "-z muldefs was%s initially set",
 			not_muldefs.did_restart ? " not" : "");
 
-		auto get_xwrapped_defined_symnames_by_input_file = [this](fmap const& f, off_t offset) -> set<string> {
-			set<string> xwrapped_symnames_defined;
-			if (f.mapping_size > 0 && 0 == memcmp(f, "\x7f""ELF", 4))
-			{
-				elfmap e(f.fd, f.start_offset());
-				debug_println(0, "Mapped an ELF at %p+0x%x", e.mapping, (unsigned) f.start_offset_from_mapping_offset);
-				if (e.hdr->e_ident[EI_CLASS] == ELFCLASS64 &&
-					e.hdr->e_ident[EI_DATA] == ELFDATA2LSB &&
-					e.hdr->e_type == ET_REL) // FIXME: archives
-				{
-					debug_println(0, "It's an interesting ELF");
-					/* Now we can use some of the linker functions. */
-					/* Can we walk its symbols? */
-					/* GAH. To get shdrs, need to do it ourselves. */
-					const Elf64_Shdr *shdrs = e.ptr<ElfW(Shdr)>(e.hdr->e_shoff);
-					/* Since we need to peek at the file contents to get
-					 * headers and the like, maybe the get_input_section_count
-					 * and get_input_section_contents calls are a bad idea.
-					 * I notice that only ld.gold implements them; ld.bfd
-					 * does not. */
-					ElfW(Shdr) *found;
-					if (nullptr != (found = e.find<SHT_SYMTAB>()))
-					{
-						ElfW(Sym) *symtab = e.ptr<ElfW(Sym>)(found->sh_offset);
-						char *strtab = e.ptr<char>((shdrs + found->sh_link)->sh_offset);
-						/* Walk the symtab looking for names that match */
-						for (ElfW(Sym) *sym = symtab; (uintptr_t) sym < (uintptr_t) symtab + found->sh_size; ++sym)
-						{
-							// claim the file if it defines a wrapped symbol
-							const char *name = &strtab[sym->st_name];
-							if (( ELFW_ST_TYPE(sym->st_info) == STT_OBJECT
-							  ||  ELFW_ST_TYPE(sym->st_info) == STT_FUNC)
-							  && (sym->st_shndx != SHN_UNDEF && sym->st_shndx != SHN_ABS)
-							  && std::find(job->options.begin(), job->options.end(), string(name))
-								!= job->options.end())
-							{
-								/* It defines a wrapped symbol */
-								xwrapped_symnames_defined.insert(name);
-							}
-						}
-					}
-				}
-			}
-			return xwrapped_symnames_defined;
-		};
 		/* We want to do a pass over the input filenames to generate
 		 * firstly a set of objects, and for each identified object,
-		 * optionally an 'interesting fact' about it. */
+		 * optionally an 'interesting fact' about it -- here its set
+		 * of defined xwrapped symnames. */
 		auto input_files = enumerate_input_files(job->cmdline);
 		for (auto i_file = input_files.begin(); i_file != input_files.end(); ++i_file)
 		{
 			debug_println(0, "Input file: %s", i_file->c_str());
 		}
 		xwrapped_defined_symnames_by_input_file = classify_input_objects< set<string> >(
-			input_files, get_xwrapped_defined_symnames_by_input_file
+			input_files,
+			[this](fmap const& f, off_t offset, string const& fname) -> set<string> {
+				set<pair< ElfW(Sym)*, string > > pairs = enumerate_symbols_matching(f, offset,
+					[this](ElfW(Sym)* sym, string const& name) -> bool {
+						return (ELFW_ST_TYPE(sym->st_info) == STT_OBJECT
+							  ||  ELFW_ST_TYPE(sym->st_info) == STT_FUNC)
+							  && (sym->st_shndx != SHN_UNDEF && sym->st_shndx != SHN_ABS)
+							  && (std::find(job->options.begin(), job->options.end(), name)
+								!= job->options.end());
+					});
+				// we have a set of pairs... need to return a set of strings
+				set<string> ret;
+				for (auto i_pair = pairs.begin(); i_pair != pairs.end(); ++i_pair)
+				{
+					ret.insert(i_pair->second);
+				}
+				return ret;
+			}
 		);
+
 		set<string> all_xwrapped_defined_symnames;
 		for (auto i_pair = xwrapped_defined_symnames_by_input_file.begin();
 			i_pair != xwrapped_defined_symnames_by_input_file.end();

@@ -171,8 +171,4 @@ enum ld_plugin_status
 
 } /* end namespace elftin */
 
-/* In the global namespace, declare 'linker' -- by default
- * this gets created with LINKER_PLUGIN() along with onload(). */
-extern struct elftin::linker_s *linker;
-
 #endif

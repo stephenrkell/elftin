@@ -18,6 +18,7 @@ struct fmap
 	off_t mapping_offset;
 	off_t start_offset_from_mapping_offset;
 	int mapping_err;
+	bool should_unmap;
 	fmap(int fd, size_t offset)
 	{
 		struct stat statbuf;
@@ -37,16 +38,15 @@ struct fmap
 			this->mapping = nullptr;
 			this->mapping_size = 0;
 			this->mapping_err = errno;
+			this->should_unmap = false;
 		}
 		else
 		{
 			this->mapping_err = 0;
+			this->should_unmap = true;
 		}
 	}
-	virtual ~fmap()
-	{
-		if (mapping) munmap(mapping, mapping_size);
-	}
+	virtual ~fmap();
 	off_t start_offset() const { return mapping_offset + start_offset_from_mapping_offset; }
 	operator bool() const { return mapping != NULL; }
 	operator void*() const { return (unsigned char *) mapping + start_offset_from_mapping_offset; }
@@ -77,8 +77,13 @@ private:
 		}
 	}
 public:
+	/* Upgrade if we no longer need the fmap. */
 	elfmap(fmap&& to_upgrade) : fmap(std::move(to_upgrade))
 	{ set_hdr(); }
+	/* Upgrade is no good if the original fmap needs to live on (e.g. in the caller);
+	 * we support copying, but the original fmap owns the memory mapping. */
+	elfmap(fmap const& to_copy) : fmap(to_copy)
+	{ set_hdr(); should_unmap = false; }
 	elfmap(int fd, size_t offset) : fmap(fd, offset)
 	{ set_hdr(); }
 

@@ -20,6 +20,7 @@
 #include <vector>
 #include <utility>
 #include <memory>
+#include <map>
 #include "plugin-api.hh"
 #include <srk31/closure.hpp> /* for pointer-to-member closures using libffi */
 
@@ -55,6 +56,7 @@ using std::string;
 using std::vector;
 using std::unique_ptr;
 using std::pair;
+using std::map;
 
 /* For any datum the transfer vector might give us,
  * put a member variable here. */
@@ -65,13 +67,18 @@ struct link_job
 	vector<string> options; // the plugin options
 	string ld_cmd;          // the ld's argv[0]
 	vector<string> cmdline; // the whole ld command line
+	map<pair<string, off_t>, int> input_files; // as passed to claim_file; int is *claimed as seen
 	link_job() : output_file_type(-1) {}
 };
 /* The transfer vector also gives us a bunch of functions we can
  * call on the linker itself. These will be stored in an instance
  * of this structure, defined in plugin-api.hh. */
 struct linker_s;
-
+}
+/* In the global namespace, declare 'linker' -- by default
+ * this gets created with LINKER_PLUGIN() along with onload(). */
+extern struct elftin::linker_s *linker;
+namespace elftin {
 /* For any 'hook' the transfer vector gives us a 'register' call for,
  * put a member function here. These are the operations the linker
  * will call on our plugin. */
