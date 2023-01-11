@@ -9,12 +9,12 @@
 #include <cassert>
 #include <unistd.h> /* for sleep() */
 #include <utility> /* for pair */
-#include <boost/optional.hpp>
 extern "C" {
 #include <link.h>
 }
 
 #include "base-ldplugin.hh"
+#include "cmdline.hh" /* for GETARG etc */
 #include "relf.h" /* from librunt; used to get our ld binary's realpath -- bit of a HACK */
 
 using std::vector;
@@ -23,7 +23,7 @@ using std::set;
 using std::map;
 using std::pair;
 using std::make_pair;
-using boost::optional;
+using std::optional;
 
 namespace elftin {
 
@@ -129,6 +129,32 @@ linker_plugin::linker_plugin(struct ld_plugin_tv *tv)
 	job->ld_cmd = job->cmdline.at(0);
 }
 
+optional<string> link_job::system_dynamic_linker() const
+{
+	for (auto i_str = cmdline.begin(); i_str != cmdline.end(); ++i_str)
+	{
+		if (STARTS_WITH(*i_str, "-m"))
+		{
+			string arg = GETARG(i_str, "-m");
+			if (arg == "elf_x86_64")
+			{
+#ifdef __linux__
+				return "/lib64/ld-linux-x86-64.so.2";
+#else
+#error "Fill in sysdep details here please"
+#endif
+			} else if (arg == "elf_i386") {
+#ifdef __linux__
+				return "/lib/ld-linux.so.2";
+#else
+#error "Fill in sysdep details here please"
+#endif
+			}
+		}
+	}
+	return optional<string>();
+}
+
 /* utility code */
 
 pair<string, int> linker_plugin::new_temp_file(const string& insert)
@@ -151,7 +177,14 @@ linker_plugin::claim_file (
   const struct ld_plugin_input_file *file, int *claimed)
 {
 	debug_println(0, "claim-file handler called (on `%s', currently %d)", file->name, *claimed);
-	job->input_files.insert(make_pair(make_pair(file->name, file->offset), *claimed));
+	unsigned char bytes[64];
+#ifndef MIN
+#define MIN(a,b)  (((a)<(b))?(a):(b))
+#endif
+	ssize_t nread = pread(file->fd, bytes, MIN(64, file->filesize - file->offset), file->offset);
+	vector<unsigned char> bvec;
+	std::copy(bytes, bytes + nread, std::back_inserter(bvec));
+	job->input_files.insert(make_pair(make_pair(file->name, file->offset), make_pair(*claimed,  bvec)));
 	return LDPS_OK;
 }
 

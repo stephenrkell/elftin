@@ -2,6 +2,10 @@
 #define ELFMAP_HH_
 
 #include <elf.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <unistd.h>
 #include "relf.h"
 
 /* Some C++ utilities for creating and navigating a memory mapping

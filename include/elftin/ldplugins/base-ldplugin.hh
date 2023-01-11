@@ -21,6 +21,7 @@
 #include <utility>
 #include <memory>
 #include <map>
+#include <optional>
 #include "plugin-api.hh"
 #include <srk31/closure.hpp> /* for pointer-to-member closures using libffi */
 
@@ -57,6 +58,7 @@ using std::vector;
 using std::unique_ptr;
 using std::pair;
 using std::map;
+using std::optional;
 
 /* For any datum the transfer vector might give us,
  * put a member variable here. */
@@ -67,8 +69,14 @@ struct link_job
 	vector<string> options; // the plugin options
 	string ld_cmd;          // the ld's argv[0]
 	vector<string> cmdline; // the whole ld command line
-	map<pair<string, off_t>, int> input_files; // as passed to claim_file; int is *claimed as seen
+	struct file_key : pair<string, off_t> { using pair::pair; typedef pair super; };
+	struct file_value : pair<int, vector<unsigned char> > { using pair::pair; typedef pair super; };
+	map<file_key::super, file_value::super> input_files; // as passed to claim_file; int is *claimed as seen
 	link_job() : output_file_type(-1) {}
+	/* What dynamic linker is the default for this job?
+	 * Clients use this if they want to replace the dynamic linker but not clobber
+	 * a non-standard one. Problem: it's not really a function of the job cmdline. */
+	optional<string> system_dynamic_linker() const;
 };
 /* The transfer vector also gives us a bunch of functions we can
  * call on the linker itself. These will be stored in an instance
