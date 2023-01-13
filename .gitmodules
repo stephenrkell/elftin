@@ -1,0 +1,6 @@
+[submodule "contrib/libsrk31cxx"]
+	path = contrib/libsrk31c++
+	url = https://github.com/stephenrkell/libsrk31cxx.git
+[submodule "contrib/librunt"]
+	path = contrib/librunt
+	url = https://github.com/stephenrkell/librunt.git
