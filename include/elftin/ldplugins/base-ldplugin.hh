@@ -106,7 +106,7 @@ struct linker_plugin
 #define declare_member(rett, name, ...) virtual rett name( __VA_ARGS__ );
 	member_functions(declare_member, type_and_name)
 #define declare_member_closure(rett, name, ...) \
-    unique_ptr<rett( __VA_ARGS__ ), srk31::ffi_closure_s<linker_plugin, rett __VA_OPT__(,) __VA_ARGS__>::closure_deleter > name ## _closure;
+    unique_ptr<rett( __VA_ARGS__ ), srk31::ffi_closure_s<linker_plugin, rett /*__VA_OPT__(,)*/ ,## __VA_ARGS__>::closure_deleter > name ## _closure;
 	member_functions(declare_member_closure, type_only)
 	int do_not_use; /* comma termination hack -- constructor initializes this member last */
 	/* processes the transfer vector and wires us up, creating 'job' and 'linker' */
