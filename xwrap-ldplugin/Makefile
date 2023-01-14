@@ -1,4 +1,5 @@
-CXXFLAGS += -fPIC
+# use C++17, for std::optional
+CXXFLAGS += -fPIC -std=gnu++17
 CFLAGS += -fPIC
 ifneq ($(LIBRUNT),)
 CXXFLAGS += -I$(LIBRUNT)/include
