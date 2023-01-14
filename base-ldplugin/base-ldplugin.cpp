@@ -28,7 +28,7 @@ using std::optional;
 namespace elftin {
 
 #define initialize_closure_to_nullptr(rett, name, ...) \
-  name ##_closure (nullptr, srk31::ffi_closure_s<linker_plugin, rett __VA_OPT__(,) __VA_ARGS__>::closure_deleter()),
+  name ##_closure (nullptr, srk31::ffi_closure_s<linker_plugin, rett,  ## __VA_ARGS__>::closure_deleter()),
 linker_plugin::linker_plugin(struct ld_plugin_tv *tv)
 : member_functions(initialize_closure_to_nullptr, type_only)
   do_not_use(0) /* comma termination hack */
