@@ -41,8 +41,14 @@ add new strings to dynstr (so renames must use a subsequence of an
 existing symbol name), cannot regenerate GNU symbol hash table (so input
 binaries must use only the SysV table).
 
-- xwrap-ldplugin: a linker plugin for doing extended wrapping ('xwrap'),
-overcoming some of the problems with the standard ld --wrap feature.
-The overall technique is documented under the 'sym2und' link above,
-and the plugin specifically is documented in a separate blog post.
+- xwrap-ldplugin: a linker plugin for the GNU bfd/gold linkers, doing
+extended wrapping ('xwrap'), overcoming some of the problems with the
+standard ld --wrap feature. The core technique is documented under the
+'sym2und' link above, and the plugin specifically is documented in a
+separate blog post.
 <https://www.humprog.org/%7Estephen/blog/2022/10/06#elf-symbol-wrapping-plugin>
+
+- base-ldplugin: utility code used by xwrap-ldplugin, but usable by
+other GNU linker plugins. It includes features for enumerating input
+files and (by a hacky self-restart mechanism) modifying the linker
+command line.
