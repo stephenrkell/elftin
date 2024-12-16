@@ -149,6 +149,8 @@ optional<string> link_job::system_dynamic_linker() const
 #else
 #error "Fill in sysdep details here please"
 #endif
+			} else {
+				abort(); // FIXME: better error report
 			}
 		}
 	}
