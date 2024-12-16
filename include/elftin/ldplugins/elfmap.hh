@@ -6,6 +6,8 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <optional>
+#include <array>
 #include "relf.h"
 
 /* Some C++ utilities for creating and navigating a memory mapping
@@ -107,10 +109,8 @@ public:
 	{ set_hdr(); }
 	/* Upgrade is no good if the original fmap needs to live on (e.g. in the caller);
 	 * we support copying, but the original fmap owns the memory mapping. */
-#if 0
 	elfmap(fmap const& to_copy) : fmap(to_copy)
 	{ set_hdr(); should_unmap = false; }
-#endif
 	elfmap(int fd, size_t offset) : fmap(fd, offset)
 	{ set_hdr(); }
 
