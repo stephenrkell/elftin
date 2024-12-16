@@ -24,10 +24,10 @@
 
 static void usage(const char *basename)
 {
-	fprintf(stderr, "Usage: %s <filename> <tagnum>\n", basename);
+	fprintf(stderr, "Usage: %s <filename> <tagnum> [tagval-as-decimal-number]\n", basename);
 }
 #ifdef DYNAPPEND_AS_LIBRARY
-int dynappend(char *filename, char *tagnum_string)
+int dynappend(char *filename, char *tagnum_string, long *maybe_tagval)
 {
 #else
 int main(int argc, char **argv)
@@ -40,6 +40,13 @@ int main(int argc, char **argv)
 
 	char *filename = argv[1];
 	char *tagnum_string = argv[2];
+	long tagval_if_needed;
+	long *maybe_tagval = NULL;
+	if (argc >= 4)
+	{
+		int ret = sscanf(argv[3], "%ld", &tagval_if_needed);
+		if (ret > 0) maybe_tagval = &tagval_if_needed;
+	}
 #endif
 	int fd = open(filename, O_RDWR);
 	if (fd == -1)
@@ -95,6 +102,7 @@ int main(int argc, char **argv)
 				{
 					/* We've found our insertion point. */
 					*d = (Elf64_Dyn) { .d_tag = atoi(tagnum_string) };
+					if (maybe_tagval) d->d_un.d_val = *maybe_tagval;
 					*(d+1) = (Elf64_Dyn) { .d_tag = DT_NULL };
 					done_it = 1;
 					break;
