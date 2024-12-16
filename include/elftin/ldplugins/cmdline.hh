@@ -158,7 +158,7 @@ map< pair<string, off_t> , T> classify_input_objects(vector<string> const& input
 			continue;
 		}
 		fmap f(fd, 0);
-		if (f.mapping_size > 0 && 0 == memcmp(f.ptr<void>(0), "!<arch>\n", 8))
+		if (f.is_archive())
 		{
 			/* iterate over entries */
 			static const char magic_bytes[] = { 0x60, 0x0a };

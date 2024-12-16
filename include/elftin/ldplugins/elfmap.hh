@@ -19,8 +19,8 @@ struct fmap
 	int fd;
 	void *mapping;
 	size_t mapping_size;
-	off_t mapping_offset;
-	off_t start_offset_from_mapping_offset;
+	off_t mapping_offset;                    // the offset used for mmap()ping the file
+	off_t start_offset_from_mapping_offset;  // offset from 'mapping' where the file data starts
 	int mapping_err;
 	bool should_unmap;
 	fmap(int fd, size_t offset)
@@ -65,10 +65,31 @@ struct fmap
 	{
 		return *reinterpret_cast<Target*>((unsigned char *) mapping + start_offset_from_mapping_offset + o);
 	}
+	
+	bool is_archive() const
+	{ return mapping_size > 0 && 0 == memcmp(this->ptr<void>(0), "!<arch>\n", 8); }
+
+	typedef std::array<unsigned char, EI_NIDENT> ident_array_t;
+	typedef std::optional<ident_array_t> is_elf_file_ret_t;
+	is_elf_file_ret_t is_elf_file() const
+	{
+		if (mapping_size > 0)
+		{
+			ident_array_t ident = { 0 };
+			memcpy(&ident[0], this->ptr<void>(0), EI_NIDENT);
+			if (0 == memcmp(&ident[0], "\x7f""ELF", 4))
+			{
+				return is_elf_file_ret_t(ident);
+			}
+		}
+		return is_elf_file_ret_t();
+	}
 };
 
 struct elfmap : public fmap
 {
+	/* FIXME: what if it's a 32-bit header and we are building on a 64-bit platform?
+	 * We could take the 'gelf' approach and take a copy here. */
 	ElfW(Ehdr) *hdr;
 private:
 	void set_hdr()
@@ -86,8 +107,10 @@ public:
 	{ set_hdr(); }
 	/* Upgrade is no good if the original fmap needs to live on (e.g. in the caller);
 	 * we support copying, but the original fmap owns the memory mapping. */
+#if 0
 	elfmap(fmap const& to_copy) : fmap(to_copy)
 	{ set_hdr(); should_unmap = false; }
+#endif
 	elfmap(int fd, size_t offset) : fmap(fd, offset)
 	{ set_hdr(); }
 
