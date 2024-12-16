@@ -1,6 +1,7 @@
 #include <vector>
 #include <set>
 #include <map>
+#include <array>
 #include <string>
 #include <cstdint>
 #include <cstdio>
