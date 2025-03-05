@@ -118,7 +118,7 @@ struct restart_if
 		char *argv[cmdline.size() + 1];
 		char **argvpos = &argv[0];
 		char buf[nchars];
-		debug_println(0, "buf at %p is %d chars\n", buf, (int) nchars);
+		debug_println(1, "buf at %p is %d chars\n", buf, (int) nchars);
 		char *bufpos = &buf[0];
 		for (auto i = cmdline.begin(); i != cmdline.end(); ++i)
 		{

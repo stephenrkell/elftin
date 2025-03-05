@@ -26,6 +26,19 @@ using std::pair;
 using std::make_pair;
 using std::optional;
 
+int debug_level;
+static __attribute__((constructor))
+void init_debug(void)
+{
+	/* HACK: borrow DEBUG_CC for now. */
+	char *found_str;
+	if (NULL != (found_str = getenv("DEBUG_CC")))
+	{
+		debug_level = atoi(found_str);
+		debug_println(0, "set debug level to %d", debug_level);
+	}
+}
+
 namespace elftin {
 
 #define initialize_closure_to_nullptr(rett, name, ...) \
@@ -46,19 +59,19 @@ linker_plugin::linker_plugin(struct ld_plugin_tv *tv)
 /* Any macro with 'dest' or 'destvec' means we snarf the info into 'job'.
  * With 'register' we set the plugin object's member functions as handlers. */
 #define CASE(x) \
-	case LDPT_ ## x: debug_println(0, "Transfer vector contained LDPT_" #x ", arg %p", i_tv->tv_u.tv_string);
+	case LDPT_ ## x: debug_println(1, "Transfer vector contained LDPT_" #x ", arg %p", i_tv->tv_u.tv_string);
 #define CASE_INT(x, dest) \
-	case LDPT_ ## x: debug_println(0, "Transfer vector contained LDPT_" #x ", arg %d", i_tv->tv_u.tv_val); job->dest = i_tv->tv_u.tv_val;
+	case LDPT_ ## x: debug_println(1, "Transfer vector contained LDPT_" #x ", arg %d", i_tv->tv_u.tv_val); job->dest = i_tv->tv_u.tv_val;
 #define CASE_STRING(x, dest) \
-	case LDPT_ ## x: debug_println(0, "Transfer vector contained LDPT_" #x ", arg `%s'", i_tv->tv_u.tv_string); job->dest = i_tv->tv_u.tv_string;
+	case LDPT_ ## x: debug_println(1, "Transfer vector contained LDPT_" #x ", arg `%s'", i_tv->tv_u.tv_string); job->dest = i_tv->tv_u.tv_string;
 #define CASE_STRINGMANY(x, destvec) \
-	case LDPT_ ## x: debug_println(0, "Transfer vector contained LDPT_" #x ", arg `%s'", i_tv->tv_u.tv_string); job->destvec.push_back(i_tv->tv_u.tv_string);
+	case LDPT_ ## x: debug_println(1, "Transfer vector contained LDPT_" #x ", arg `%s'", i_tv->tv_u.tv_string); job->destvec.push_back(i_tv->tv_u.tv_string);
 #define CASE_FP(x, lc) \
-	case LDPT_ ## x: debug_println(0, "Transfer vector contained LDPT_" #x "; argument %p", \
+	case LDPT_ ## x: debug_println(1, "Transfer vector contained LDPT_" #x "; argument %p", \
 	    i_tv->tv_u.tv_ ## lc); \
 	linker->lc = static_cast<__typeof(linker->lc)>(i_tv->tv_u.tv_ ## lc);
 #define CASE_FP_REGISTER(x, lc) \
-	case LDPT_REGISTER_ ## x: debug_println(0, "Transfer vector contained LDPT_REGISTER_" #x "; argument %p", \
+	case LDPT_REGISTER_ ## x: debug_println(1, "Transfer vector contained LDPT_REGISTER_" #x "; argument %p", \
 	    i_tv->tv_u.tv_register_ ## lc); \
 	/* snarf the register_* function, in *linker */ \
 	linker->register_ ## lc = static_cast<__typeof(linker->register_ ## lc)>(i_tv->tv_u.tv_register_ ## lc); \
@@ -112,7 +125,7 @@ linker_plugin::linker_plugin(struct ld_plugin_tv *tv)
 			CASE_FP_REGISTER(NEW_INPUT_HOOK, new_input) break;
 			//CASE_FP(GET_WRAP_SYMBOLS, get_wrap_symbols) break;
 			default:
-				debug_println(0, "Did not recognise transfer vector element %d", 
+				debug_println(1, "Did not recognise transfer vector element %d", 
 					(int) i_tv->tv_tag);
 				break;
 		}
@@ -124,7 +137,7 @@ linker_plugin::linker_plugin(struct ld_plugin_tv *tv)
 	struct auxv_limits auxv_limits = get_auxv_limits(auxv);
 	for (const char **p = auxv_limits.argv_vector_start; *p; ++p)
 	{
-		debug_println(0, "Saw arg: `%s'", *p);
+		debug_println(1, "Saw arg: `%s'", *p);
 		job->cmdline.push_back(*p);
 	}
 	job->ld_cmd = job->cmdline.at(0);
@@ -179,7 +192,7 @@ enum ld_plugin_status
 linker_plugin::claim_file (
   const struct ld_plugin_input_file *file, int *claimed)
 {
-	debug_println(0, "claim-file handler called (on `%s', currently %d)", file->name, *claimed);
+	debug_println(1, "claim-file handler called (on `%s', currently %d)", file->name, *claimed);
 	unsigned char bytes[64];
 #ifndef MIN
 #define MIN(a,b)  (((a)<(b))?(a):(b))
@@ -195,14 +208,14 @@ linker_plugin::claim_file (
 enum ld_plugin_status
 linker_plugin::all_symbols_read()
 {
-	debug_println(0, "all-symbols-read handler called ()");
+	debug_println(1, "all-symbols-read handler called ()");
 	return LDPS_OK;
 }
 
 enum ld_plugin_status
 linker_plugin::new_input(const struct ld_plugin_input_file *file)
 {
-	debug_println(0, "new input handler called ()");
+	debug_println(1, "new input handler called ()");
 	return LDPS_OK;
 }
 

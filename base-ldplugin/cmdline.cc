@@ -14,7 +14,7 @@ set< pair<ElfW(Sym)*, string> > enumerate_symbols_matching(fmap const& f, off_t 
 	set< pair<ElfW(Sym)*, string> > matched;
 	if (f.mapping_size > 0 && 0 == memcmp(f, "\x7f""ELF", 4))
 	{
-		debug_println(0, "We have an ELF at %p+0x%x", f.mapping, (unsigned) f.start_offset_from_mapping_offset);
+		debug_println(1, "We have an ELF at %p+0x%x", f.mapping, (unsigned) f.start_offset_from_mapping_offset);
 		// it's already mapped! how do we do the 'upgrade'? need to point to it, unfortunately
 		elfmap e(f);
 		assert(e.mapping == f.mapping);
@@ -22,7 +22,7 @@ set< pair<ElfW(Sym)*, string> > enumerate_symbols_matching(fmap const& f, off_t 
 			e.hdr->e_ident[EI_DATA] == ELFDATA2LSB &&
 			e.hdr->e_type == ET_REL)
 		{
-			debug_println(0, "It's an interesting ELF");
+			debug_println(1, "It's an interesting ELF");
 			/* Now we can use some of the linker functions. */
 			/* Can we walk its symbols? */
 			/* GAH. To get shdrs, need to do it ourselves. */

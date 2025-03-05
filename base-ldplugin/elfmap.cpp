@@ -18,7 +18,7 @@ namespace elftin
 	{
 		if (mapping && should_unmap)
 		{
-			debug_println(0, "Finished with mapping at %p (size 0x%u)",
+			debug_println(1, "Finished with mapping at %p (size 0x%u)",
 				mapping, (unsigned) mapping_size);
 			munmap(mapping, mapping_size);
 		}

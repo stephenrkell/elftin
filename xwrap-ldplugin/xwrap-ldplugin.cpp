@@ -99,7 +99,7 @@ struct xwrap_plugin : elftin::linker_plugin
 	enum ld_plugin_status
 	claim_file(const struct ld_plugin_input_file *file, int *claimed)
 	{
-		debug_println(0, "claim-file handler called (on `%s', currently %d)", file->name, *claimed);
+		debug_println(1, "claim-file handler called (on `%s', currently %d)", file->name, *claimed);
 		/* If we "claim" a file, we are responsible for feeding its contents
 		 * to the linker. How is this done in, say, the LLVM LTO plugin?
 		 * In the claim-file hook, it just claims files and grabs input data.
@@ -157,7 +157,7 @@ struct xwrap_plugin : elftin::linker_plugin
 			string tmpname = tmpfile.first;
 			int tmpfd = tmpfile.second;
 			if (tmpfd == -1) abort();
-			debug_println(0, "Claimed file is replaced by temporary %s", tmpname.c_str());
+			debug_println(1, "Claimed file is replaced by temporary %s", tmpname.c_str());
 			claimed_files.push_back(make_pair(file, tmpname));
 			for (auto i_sym = found->second.begin(); i_sym != found->second.end(); ++i_sym)
 			{
@@ -237,7 +237,7 @@ struct xwrap_plugin : elftin::linker_plugin
 				assert(bufstrlen <= buflen - 1);
 				assert(bufstrlen == strlen(cmdstr));
 			}
-			debug_println(0, "system()ing cmdstr: %s", cmdstr);
+			debug_println(1, "system()ing cmdstr: %s", cmdstr);
 			ret = system(cmdstr);
 			free(cmdstr);
 			if (ret != 0) abort(); // FIXME
@@ -253,7 +253,7 @@ struct xwrap_plugin : elftin::linker_plugin
 	/* The plugin library's "all symbols read" handler.  */
 	enum ld_plugin_status all_symbols_read()
 	{
-		debug_println(0, "all-symbols-read handler called ()");
+		debug_println(1, "all-symbols-read handler called ()");
 		/* How is this done in, say, the LLVM LTO plugin?
 		 * In the claim-file hook, it just claims files and grabs input data.
 		 * In the all-symbols-read hook, it creates lots of temporary files
@@ -299,7 +299,7 @@ struct xwrap_plugin : elftin::linker_plugin
 		// no need to call the base 'onload' -- the constructor did the necessary
 		/* We need -z muldefs. Restart if we don't have it. */
 		RESTART_IF(not_muldefs, missing_option_subseq({"-z", "muldefs"}), job->cmdline);
-		debug_println(0, "-z muldefs was%s initially set",
+		debug_println(1, "-z muldefs was%s initially set",
 			not_muldefs.did_restart ? " not" : "");
 
 		/* We want to do a pass over the input filenames to generate
@@ -309,7 +309,7 @@ struct xwrap_plugin : elftin::linker_plugin
 		auto input_files = enumerate_input_files(job->cmdline);
 		for (auto i_file = input_files.begin(); i_file != input_files.end(); ++i_file)
 		{
-			debug_println(0, "Input file: %s", i_file->c_str());
+			debug_println(1, "Input file: %s", i_file->c_str());
 		}
 		xwrapped_defined_symnames_by_input_file = classify_input_objects< set<string> >(
 			input_files,
@@ -340,7 +340,7 @@ struct xwrap_plugin : elftin::linker_plugin
 			for (auto i_symname = i_pair->second.begin(); i_symname != i_pair->second.end();
 				++i_symname)
 			{
-				debug_println(0, "Xwrapped symname: %s", i_symname->c_str());
+				debug_println(1, "Xwrapped symname: %s", i_symname->c_str());
 				all_xwrapped_defined_symnames.insert(*i_symname);
 			}
 		}
@@ -391,14 +391,14 @@ struct xwrap_plugin : elftin::linker_plugin
 				{
 					new_vec.push_back("--wrap");
 					new_vec.push_back(*i_missing);
-					debug_println(0, "Added missing --wrap option for `%s'", i_missing->c_str());
+					debug_println(1, "Added missing --wrap option for `%s'", i_missing->c_str());
 				}
 				return make_pair(true, new_vec);
 			}
 			return make_pair(false, cmdline_vec);
 		};
 		RESTART_IF(missing_any_wrap_options, missing_wrap_options, job->cmdline);
-		debug_println(0, "all needed wrap options were%s initially set",
+		debug_println(1, "all needed wrap options were%s initially set",
 			missing_any_wrap_options.did_restart ? " not" : "");
 
 		/* Now we have too much wrap!
@@ -495,7 +495,7 @@ struct xwrap_plugin : elftin::linker_plugin
 				all_xwrapped_defined_symnames.end())
 			{
 				// nothing to put in the ldscript, so we're fine
-				debug_println(0, "No xwrapped defined symnames!");
+				debug_println(1, "No xwrapped defined symnames!");
 				retval = make_pair(false, cmdline_vec);
 			}
 			else if (STARTS_WITH(string(cmdline_vec.at(1)), "/proc/self/fd/")
@@ -507,8 +507,8 @@ struct xwrap_plugin : elftin::linker_plugin
 			}
 			else
 			{
-				if (tmpldscript_realpathbuf) debug_println(0, "was not impressed by realpath `%s'", tmpldscript_realpathbuf);
-				else debug_println(0, "was not impressed with cmdline_vec[1] `%s' (substr: %s)",
+				if (tmpldscript_realpathbuf) debug_println(1, "was not impressed by realpath `%s'", tmpldscript_realpathbuf);
+				else debug_println(1, "was not impressed with cmdline_vec[1] `%s' (substr: %s)",
 					cmdline_vec[1].c_str(),
 					cmdline_vec[1].substr(0, sizeof "/proc/self/fd/" - 1).c_str());
 				auto tmpfile = new_temp_file("xwrap-ldplugin-lds");
@@ -531,7 +531,7 @@ struct xwrap_plugin : elftin::linker_plugin
 			return retval;
 		};
 		RESTART_IF(no_initial_ldscript, missing_ldscript, job->cmdline);
-		debug_println(0, "ldscript was initially %s",
+		debug_println(1, "ldscript was initially %s",
 			no_initial_ldscript.did_restart ? "missing yet needed" : "present or unnecessary");
 		/* DANGER: we want to avoid leaking the temporary file. We can unlink it, but
 		 * only after we're sure we're not going to restart any more, but not before

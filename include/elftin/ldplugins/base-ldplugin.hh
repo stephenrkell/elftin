@@ -3,8 +3,10 @@
 
 /* To print stuff out, we mostly use the linker MESSAGE interface.
  * But early on, we haven't snarfed it yet. */
-#define debug_println(lvl_ignored, fmt, args...) \
+extern int debug_level;
+#define debug_println(lvl, fmt, args...) \
     do { \
+     if (debug_level >= (lvl)) { \
        if (::linker && ::linker->message) ::linker->message(LDPL_INFO, fmt /*__VA_OPT__(,) ## __VA_ARGS__*/ , ##args ); \
        else { fprintf(stderr, fmt "\n" /*__VA_OPT__(,) ## __VA_ARGS__*/ , ##args ); fflush(stderr); } \
         /* HMM. fflushing stderr no longer works! Delay but no message until too late. */ \
@@ -14,6 +16,7 @@
         /* Redirecting output  2>&1 |cat has no effect. */ \
         /* Using gold makes no difference. */ \
         /* HMM. GCC 10 is fine. GCC 8.3 causes the problem. */ \
+     } \
     } while (0)
 
 #include <string>
