@@ -187,7 +187,7 @@ struct xwrap_plugin : elftin::linker_plugin
 			boost::filesystem::path origname_p(string(claimed_files.back().input_file->name));
 			boost::filesystem::path tmpname_p(tmpname);
 			boost::filesystem::copy_file(origname_p, tmpname_p,
-				boost::filesystem::copy_option::overwrite_if_exists); // FIXME: error handling?
+				boost::filesystem::copy_options::overwrite_existing); // FIXME: error handling?
 
 			// for all syms, do normrelocs <sym> on file tmpname
 			for (auto i_sym = claimed_files.back().syms.begin();
