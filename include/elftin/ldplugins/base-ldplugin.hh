@@ -135,7 +135,7 @@ struct linker_plugin
 	cleanup(void) \
 	{ \
 		linker = nullptr; \
-		plugin.reset(); \
+		plugin.reset(); /* nulls out the smart ptr, calling destructor */ \
 		return LDPS_OK; \
 	}; \
 	enum ld_plugin_status \
