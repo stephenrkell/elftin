@@ -52,6 +52,7 @@
 #include <sys/types.h> /* for fstat() */
 #include <sys/stat.h> /* for fstat() */
 #include <unistd.h> /* for fstat(), write(), read() */
+#include <sstream>
 #include <utility> /* for pair */
 #include <algorithm> /* for find_if and remove_if */
 #include <boost/optional.hpp>
